@@ -142,7 +142,7 @@ class HeightMapPathTracer:
 DEFAULT_CELL_SIZE = 10.0
 DEFAULT_AZIMUTH = -np.pi / 4
 DEFAULT_ALTITUDE = np.pi / 4
-DEFAULT_MAGNITUDE = 8
+DEFAULT_MAGNITUDE = 10
 
 
 def main():
@@ -157,9 +157,9 @@ def main():
         DEFAULT_CELL_SIZE,
         DEFAULT_AZIMUTH,
         DEFAULT_ALTITUDE,
-        10,
+        1,
         1.0,
-        10,
+        0,
         0.1
     )
     fig, axes = plt.subplots(1, 2, figsize=(8, 4))
