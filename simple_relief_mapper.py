@@ -38,7 +38,7 @@ class SimpleReliefMapper:
         self.maximum_ray_length = NEAR_INFINITE
 
     @ti.func
-    def get_partial_length(self, d: float, x: float) -> float:
+    def get_partial_step_size(self, d: float, x: float) -> float:
         result = 0.0
         if d < 0.0:
             lb = int(x)
@@ -54,9 +54,9 @@ class SimpleReliefMapper:
         return result
 
     @ti.func
-    def get_ray_length(self, x: float, y: float, dx: float, dy: float) -> float:
-        lx = self.get_partial_length(dx, x)
-        ly = self.get_partial_length(dy, y)
+    def get_step_size_to_next_bbox(self, x: float, y: float, dx: float, dy: float) -> float:
+        lx = self.get_partial_step_size(dx, x)
+        ly = self.get_partial_step_size(dy, y)
         l = min(lx, ly)
         l += EPSILON
         return l
@@ -69,10 +69,10 @@ class SimpleReliefMapper:
         #===============================================================#
         # within cell (i, j), randomly pick an (x, y) coordinate.       #
         # the z coordinate is equal to the height map at (i, j).        #
-        x = i + ti.random(dtype=float)                                  #
-        y = j + ti.random(dtype=float)                                  #
-        z = self.height_map[i, j] * amplitude                           #
         #===============================================================#
+        x = i + ti.random(dtype=float)
+        y = j + ti.random(dtype=float)
+        z = self.height_map[i, j] * amplitude
 
         #===============================================================#
         # Now, we march the ray (x, y, z) forward by small steps until  #
@@ -104,7 +104,9 @@ class SimpleReliefMapper:
 
             #===========================================================#
             # the ray is still above the terrain, so march it forward   #
-            # by step size l.                                           #
+            # by step size l. This will move the ray towards the next   #
+            # bounding box.                                             #
+            #                                                           #
             # we multiply dz by the cell size to account for the        #
             # shallowness of the terrain.                               #
             #                                                           #
@@ -113,7 +115,7 @@ class SimpleReliefMapper:
             # if cell_size = 1.0, then the horizontal dimensions (x, y) #
             # are in proportion to the vertical dimension (z)           #
             #===========================================================#
-            l = self.get_ray_length(x, y, dx, dy)
+            l = self.get_step_size_to_next_bbox(x, y, dx, dy)
             x += l * dx
             y += l * dy
             z += l * dz * self.cell_size
