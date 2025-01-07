@@ -1,12 +1,21 @@
-import taichi as ti
+import taichi as ti; ti.init(arch=ti.cpu)
 import numpy as np
 from noise import snoise2
 
 
-ti.init(arch=ti.cpu)
+EPSILON = 1e-6
+NEAR_INFINITE = 1e10
 
 
-def perlin_height_map(dim, octaves, amplitude, seed=42):
+def simplex_height_map(dim, octaves, amplitude, seed=42):
+    """
+    Simple wrapper that samples a height map from simplex noise.
+    :param dim:
+    :param octaves:
+    :param amplitude:
+    :param seed:
+    :return:
+    """
     arr = np.zeros((dim, dim))
     for i in range(dim):
         for j in range(dim):
@@ -26,20 +35,44 @@ class SimpleReliefMapper:
         self.max_value = np.max(self.height_map.to_numpy())
         self.pixels = ti.field(dtype=float, shape=(w, h))
         self.cell_size = cell_size
-
+        self.maximum_ray_length = NEAR_INFINITE
 
     @ti.func
-    def trace(self, i, j, dx, dy, dz, amplitude, max_value, dt=0.1):
+    def get_partial_step_size(self, d: float, x: float) -> float:
+        result = 0.0
+        if d < 0.0:
+            lb = int(x)
+            if x % 1.0 == 0.0:
+                lb -= 1.0
+            result = (x - lb) / -d
+        elif d > 0.0:
+            ub = int(x) + 1
+            result = (ub - x) / d
+        elif d == 0.0:
+            result = self.maximum_ray_length
+        assert result > 0
+        return result
+
+    @ti.func
+    def get_step_size_to_next_bbox(self, x: float, y: float, dx: float, dy: float) -> float:
+        lx = self.get_partial_step_size(dx, x)
+        ly = self.get_partial_step_size(dy, y)
+        l = min(lx, ly)
+        l += EPSILON
+        return l
+
+    @ti.func
+    def trace(self, i, j, dx, dy, dz, amplitude, max_value):
         result = 0.0
         w, h = self.height_map.shape
 
         #===============================================================#
         # within cell (i, j), randomly pick an (x, y) coordinate.       #
         # the z coordinate is equal to the height map at (i, j).        #
-        x = i + ti.random(dtype=float)                                  #
-        y = j + ti.random(dtype=float)                                  #
-        z = self.height_map[i, j] * amplitude                           #
         #===============================================================#
+        x = i + ti.random(dtype=float)
+        y = j + ti.random(dtype=float)
+        z = self.height_map[i, j] * amplitude
 
         #===============================================================#
         # Now, we march the ray (x, y, z) forward by small steps until  #
@@ -71,7 +104,9 @@ class SimpleReliefMapper:
 
             #===========================================================#
             # the ray is still above the terrain, so march it forward   #
-            # by step size dt.                                          #
+            # by step size l. This will move the ray towards the next   #
+            # bounding box.                                             #
+            #                                                           #
             # we multiply dz by the cell size to account for the        #
             # shallowness of the terrain.                               #
             #                                                           #
@@ -80,9 +115,10 @@ class SimpleReliefMapper:
             # if cell_size = 1.0, then the horizontal dimensions (x, y) #
             # are in proportion to the vertical dimension (z)           #
             #===========================================================#
-            x += dt * dx
-            y += dt * dy
-            z += dt * dz * self.cell_size
+            l = self.get_step_size_to_next_bbox(x, y, dx, dy)
+            x += l * dx
+            y += l * dy
+            z += l * dz * self.cell_size
 
             #===========================================================#
             # finally, if the ray's z value is higher than the entire   #
@@ -144,7 +180,7 @@ def run(renderer):
 
 def example_map_1(n):
     octaves = int(np.log2(n))
-    z = perlin_height_map(dim=n, octaves=octaves, amplitude=n, seed=42)
+    z = simplex_height_map(dim=n, octaves=octaves, amplitude=n, seed=42)
     z = np.float32(z)
     z[n // 2 - n // 8:n // 2 + n // 8, n // 2 - n // 8:n // 2 + n // 8] = 0
     return z
@@ -162,4 +198,4 @@ def main(n):
 
 
 if __name__ == "__main__":
-    main(n=256)
+    main(n=512)
