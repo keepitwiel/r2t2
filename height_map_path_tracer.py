@@ -1,14 +1,14 @@
 from time import time
 
 import numpy as np
-from numba import njit
+import taichi as ti
 import matplotlib.pyplot as plt
 
 
 EPSILON = 1e-6
 
 
-@njit
+@ti.kernel
 def max_2x2_subdivisions(array: np.ndarray) -> np.ndarray:
     n = array.shape[0]  # Assuming matrix is n x n, where n = 2^p
     result = np.zeros((n // 2, n // 2), dtype=float)  # Result matrix of size (n//2) x (n//2)
@@ -22,9 +22,8 @@ def max_2x2_subdivisions(array: np.ndarray) -> np.ndarray:
     return result
 
 
-@njit
 def get_max_arrays(array):
-    h, w = array.shape
+    h, w = array.get_shape
     assert h == w, f"Height and width should be the same. Found: height {h}, width {w}."
     p = int(np.log2(h))
     assert 2**p == h, f"Array dimension should be equal to 2**p, where p an integer >= 0. Found: {h}"
@@ -35,7 +34,7 @@ def get_max_arrays(array):
     return result
 
 
-@njit
+@ti.func
 def max_test(max_arrays: list[np.ndarray], x: float, y: float, z: float) -> tuple[float, int]:
     for k in range(len(max_arrays) - 1, -1, -1):
         q = 2**k
@@ -46,7 +45,7 @@ def max_test(max_arrays: list[np.ndarray], x: float, y: float, z: float) -> tupl
     return z_test, q
 
 
-@njit
+@ti.func
 def get_partial_length(delta: float, position: float, step: int) -> float:
     index = position // step
     if delta < 0:
@@ -62,7 +61,7 @@ def get_partial_length(delta: float, position: float, step: int) -> float:
         return np.inf
 
 
-@njit
+@ti.func
 def get_ray_length(max_arrays: list[np.ndarray], x: float, y: float, z: float, dx: float, dy: float) -> float:
     z_test, q = max_test(max_arrays, x, y, z)
     if z_test > z and q == 1:
@@ -76,7 +75,7 @@ def get_ray_length(max_arrays: list[np.ndarray], x: float, y: float, z: float, d
     return l
 
 
-@njit
+@ti.func
 def trace(max_arrays: list[np.ndarray], output: np.ndarray, j: int, i: int, dx: float, dy: float, dz: float, luminance: float) -> None:
     h, w = max_arrays[0].shape
     x = i + np.random.uniform()
@@ -94,9 +93,9 @@ def trace(max_arrays: list[np.ndarray], output: np.ndarray, j: int, i: int, dx: 
     output[j, i] += luminance
 
 
-@njit
+@ti.kernel
 def _render(max_arrays, output, cell_size, sun_azimuth, sun_altitude, n_sun_samples, n_sky_samples):
-    h, w = max_arrays[0].shape
+    h, w = max_arrays[0].get_shape
     dx = np.cos(sun_azimuth)
     dy = np.sin(sun_azimuth)
     dz = np.tan(sun_altitude) * cell_size
@@ -113,7 +112,7 @@ def _render(max_arrays, output, cell_size, sun_azimuth, sun_altitude, n_sun_samp
 
 class HeightMapPathTracer:
     def __init__(self, height_map, cell_size, sun_azimuth, sun_altitude, n_sun_samples, sun_luminosity, n_sky_samples, sky_luminosity):
-        h, w = height_map.shape
+        h, w = height_map.get_shape
         assert h == w, f"Height and width should be the same. Found: height {h}, width {w}."
         p = int(np.log2(h))
         assert 2 ** p == h, f"Array dimension should be equal to 2**p, where p an integer >= 0. Found: {h}"
