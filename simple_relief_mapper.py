@@ -114,8 +114,6 @@ class SimpleReliefMapper:
             # are in proportion to the vertical dimension (z)           #
             #===========================================================#
             l = self.get_ray_length(x, y, dx, dy)
-            # if l < 2 * EPSILON:
-            #    print(f"l: {l:.7f}, x, y, dx, dy: {x:.3f}, {y:.3f}, {dx:.3f}, {dy:.3f}")
             x += l * dx
             y += l * dy
             z += l * dz * self.cell_size
