@@ -10,7 +10,6 @@ NEAR_INFINITE = 1e10
 class SimpleReliefMapper:
     def __init__(self, height_map: np.ndarray, cell_size=10.0):
         w, h = height_map.shape
-        self.max_t = max(w, h)
         self.altitude = np.pi / 2
         self.height_map = ti.field(dtype=float, shape=(w, h))
         self.height_map.from_numpy(height_map)
@@ -18,6 +17,20 @@ class SimpleReliefMapper:
         self.pixels = ti.field(dtype=float, shape=(w, h))
         self.cell_size = cell_size
         self.maximum_ray_length = NEAR_INFINITE
+        self.maxmipmap = self.get_maxmipmap()
+
+    def get_maxmipmap(self):
+        result = []
+        z = self.height_map.to_numpy()
+        while max(z.shape) > 1:
+            result.append(z)
+            w, h = z.shape
+            mipmap = np.zeros(shape=(w // 2, h // 2), dtype=float)
+            for i in range(0, w, 2):
+                for j in range(0, h, 2):
+                    mipmap[i // 2][j // 2] = np.max(z[i:i+2, j:j+2])
+            z = mipmap
+        return result
 
     @ti.func
     def get_partial_step_size(self, d: float, x: float) -> float:
@@ -36,7 +49,41 @@ class SimpleReliefMapper:
         return result
 
     @ti.func
-    def get_step_size_to_next_bbox(self, x: float, y: float, dx: float, dy: float) -> float:
+    def max_test(self, x, y, z):
+        i, j = x // 1, y // 1
+        for k in range(len(self.maxmipmap)):
+            mmm = self.maxmipmap[k]
+            z_max = mmm[i, j]
+            if z_max < z:
+                break
+            i, j = i // 2, j // 2
+        return z_max, k
+
+    @ti.func
+    def get_step_size_to_next_bbox(
+            self, x: float, y: float, z: float, dx: float, dy: float
+    ) -> float:
+        """
+        Calculates the length a ray must travel before it hits
+        the next relevant bounding box.
+
+        The length, in part, depends on whether the ray is above
+        the maximum of the surrounding height map.
+        :param x:
+        :param y:
+        :param z:
+        :param dx:
+        :param dy:
+        :return:
+        """
+        z_max, k = self.max_test(x, y, z)
+        if z_max > z and k == 0:
+            #===========================================================#
+            # even at the smallest resolution,                          #
+            # the maximum height is above z.                            #
+            # therefore we conclude the ray is stopped.                 #
+            #===========================================================#
+            return 0.0
         lx = self.get_partial_step_size(dx, x)
         ly = self.get_partial_step_size(dy, y)
         l = min(lx, ly)
@@ -44,7 +91,7 @@ class SimpleReliefMapper:
         return l
 
     @ti.func
-    def trace(self, i, j, dx, dy, dz, amplitude, max_value):
+    def trace(self, i, j, dx, dy, dz, amplitude):
         result = 0.0
         w, h = self.height_map.shape
 
@@ -88,7 +135,12 @@ class SimpleReliefMapper:
             # the ray is still above the terrain, so march it forward   #
             # by step size l. This will move the ray towards the next   #
             # bounding box.                                             #
-            #                                                           #
+            #===========================================================#
+            l = self.get_step_size_to_next_bbox(x, y, z, dx, dy)
+            if l == 0.0:
+                break
+
+            #===========================================================#
             # we multiply dz by the cell size to account for the        #
             # shallowness of the terrain.                               #
             #                                                           #
@@ -97,31 +149,29 @@ class SimpleReliefMapper:
             # if cell_size = 1.0, then the horizontal dimensions (x, y) #
             # are in proportion to the vertical dimension (z)           #
             #===========================================================#
-            l = self.get_step_size_to_next_bbox(x, y, dx, dy)
             x += l * dx
             y += l * dy
             z += l * dz * self.cell_size
 
-            #===========================================================#
-            # finally, if the ray's z value is higher than the entire   #
-            # height map, it means it will never collide with it        #
-            # (assuming dz > 0).                                        #
-            #                                                           #
-            # this is a safe but costly approach which could be         #
-            # improved by checking nearby maximum values instead of the #
-            # global maximum.                                           #
-            #===========================================================#
-            if z > max_value:
-                result = 1.0
-                break
+            # #===========================================================#
+            # # finally, if the ray's z value is higher than the entire   #
+            # # height map, it means it will never collide with it        #
+            # # (assuming dz > 0).                                        #
+            # #                                                           #
+            # # this is a safe but costly approach which could be         #
+            # # improved by checking nearby maximum values instead of the #
+            # # global maximum.                                           #
+            # #===========================================================#
+            # if z > max_value:
+            #     result = 1.0
+            #     break
 
         return result
 
     @ti.kernel
     def render(self, dx: float, dy: float, dz: float, amplitude: float):
-        max_value = self.max_value * amplitude
         for i, j in self.pixels:
-            self.pixels[i, j] = self.trace(i, j, dx, dy, dz, amplitude, max_value)
+            self.pixels[i, j] = self.trace(i, j, dx, dy, dz, amplitude)
 
     def get_shape(self) -> tuple[int]:
         return self.pixels.shape
