@@ -1,27 +1,9 @@
 import taichi as ti; ti.init(arch=ti.cpu)
 import numpy as np
-from noise import snoise2
 
 
 EPSILON = 1e-6
 NEAR_INFINITE = 1e10
-
-
-def simplex_height_map(dim, octaves, amplitude, seed=42):
-    """
-    Simple wrapper that samples a height map from simplex noise.
-    :param dim:
-    :param octaves:
-    :param amplitude:
-    :param seed:
-    :return:
-    """
-    arr = np.zeros((dim, dim))
-    for i in range(dim):
-        for j in range(dim):
-            arr[j, i] = snoise2(j / dim, i / dim, octaves=octaves, base=seed)
-    arr *= amplitude
-    return arr
 
 
 @ti.data_oriented
@@ -147,55 +129,11 @@ class SimpleReliefMapper:
     def get_image(self):
         return self.pixels
 
-
-def get_direction(azimuth, altitude):
-    azi_rad = azimuth * np.pi / 180
-    alt_rad = altitude * np.pi / 180
-    dx = np.cos(alt_rad) * np.cos(azi_rad)
-    dy = np.cos(alt_rad) * np.sin(azi_rad)
-    dz = np.sin(alt_rad)
-    return dx, dy, dz
-
-
-def run(renderer):
-    window = ti.ui.Window(name='Window Title', res=renderer.get_shape(), fps_limit=30, pos=(0, 0))
-    gui = window.get_gui()
-    canvas = window.get_canvas()
-    vertical_scale = 1.0
-    azimuth = 45 # light source horizontal direction, degrees
-    altitude = 15 # degrees
-    while window.running:
-        with gui.sub_window("Sub Window", 0.1, 0.1, 0.5, 0.2):
-            vertical_scale = gui.slider_float("vertical scale", vertical_scale, 0.0, 10.0)
-            altitude = gui.slider_float("altitude (deg)", altitude, 0, 89)
-        dx, dy, dz = get_direction(azimuth, altitude)
-
-        renderer.render(dx, dy, dz, vertical_scale)
-        canvas.set_image(renderer.get_image())
-        window.show()
-
-        # the following rotates the azimuth between 0 and 360 degrees, with increments of 1 degree per step
-        azimuth = (azimuth + 1) % 360
-
-
-def example_map_1(n):
-    octaves = int(np.log2(n))
-    z = simplex_height_map(dim=n, octaves=octaves, amplitude=n, seed=42)
-    z = np.float32(z)
-    z[n // 2 - n // 8:n // 2 + n // 8, n // 2 - n // 8:n // 2 + n // 8] = 0
-    return z
-
-
-def main(n):
-    # define height map
-    z = example_map_1(n)
-
-    # initialize renderer
-    renderer = SimpleReliefMapper(height_map=z)
-
-    # run app
-    run(renderer)
-
-
-if __name__ == "__main__":
-    main(n=512)
+    @staticmethod
+    def get_direction(azimuth, altitude):
+        azi_rad = azimuth * np.pi / 180
+        alt_rad = altitude * np.pi / 180
+        dx = np.cos(alt_rad) * np.cos(azi_rad)
+        dy = np.cos(alt_rad) * np.sin(azi_rad)
+        dz = np.sin(alt_rad)
+        return dx, dy, dz
