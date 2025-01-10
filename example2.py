@@ -30,9 +30,9 @@ def main():
     print(renderer.get_mipmap_value(8, 8, 3), np.max(height_map[8:16, 8:16]))
     print(renderer.get_mipmap_value(9, 9, 3), np.max(height_map[8:16, 8:16]))
 
-    renderer.get_mipmap_value(767, 1023, level=0)
-    renderer.get_mipmap_value(767, 1023, level=1)
-    renderer.get_mipmap_value(767, 1023, level=10)
+    print(renderer.get_mipmap_value(767, 1023, level=0), height_map[767, 1023])
+    print(renderer.get_mipmap_value(767, 1023, level=1), np.max(height_map[766:768, 1022:1024]))
+    print(renderer.get_mipmap_value(767, 1023, level=2), np.max(height_map[764:768, 1020:1024]))
 
 
 if __name__ == "__main__":
