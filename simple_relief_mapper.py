@@ -1,4 +1,6 @@
 import taichi as ti; ti.init(arch=ti.cpu)
+from max_mip_map import MaxMipMap
+
 import numpy as np
 
 
@@ -17,20 +19,7 @@ class SimpleReliefMapper:
         self.pixels = ti.field(dtype=float, shape=(w, h))
         self.cell_size = cell_size
         self.maximum_ray_length = NEAR_INFINITE
-        self.maxmipmap = self.get_maxmipmap()
-
-    def get_maxmipmap(self):
-        result = []
-        z = self.height_map.to_numpy()
-        while max(z.shape) > 1:
-            result.append(z)
-            w, h = z.shape
-            mipmap = np.zeros(shape=(w // 2, h // 2), dtype=float)
-            for i in range(0, w, 2):
-                for j in range(0, h, 2):
-                    mipmap[i // 2][j // 2] = np.max(z[i:i+2, j:j+2])
-            z = mipmap
-        return result
+        self.maxmipmap = MaxMipMap(self.height_map)
 
     @ti.func
     def get_partial_step_size(self, d: float, x: float) -> float:
@@ -51,8 +40,8 @@ class SimpleReliefMapper:
     @ti.func
     def max_test(self, x, y, z):
         i, j = x // 1, y // 1
-        for k in range(len(self.maxmipmap)):
-            mmm = self.maxmipmap[k]
+        for k in range(len(self.maxmipmap.levels)):
+            mmm = self.maxmipmap.get_value(i, j, level=k)
             z_max = mmm[i, j]
             if z_max < z:
                 break

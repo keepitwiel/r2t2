@@ -26,6 +26,7 @@ def run(renderer):
 
 
 def example_map_1(n):
+    """A height map generated from simplex noise. In the middle, a small square area gets a value of 0."""
     octaves = int(np.log2(n))
     z = simplex_height_map(dim=n, octaves=octaves, amplitude=n, seed=42)
     z = np.float32(z)
