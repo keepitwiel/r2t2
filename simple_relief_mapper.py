@@ -3,7 +3,7 @@ import taichi as ti; ti.init(arch=ti.cpu)
 import numpy as np
 
 
-EPSILON = 1e-6
+EPSILON = 1e-9
 NEAR_INFINITE = 1e10
 
 
@@ -30,6 +30,7 @@ class SimpleReliefMapper:
         # this means filling the mipmap at lower levels with low values.
         #
         # First, calculate the maximum between the log of width and height.
+        print("Get maxmipmap...")
         w, h = self.w, self.h
         log_w = np.log2(w)
         log_h = np.log2(h)
@@ -49,6 +50,7 @@ class SimpleReliefMapper:
         )
 
         # fill the copy with original values
+        print("fill the copy with original values...")
         for i in range(w):
             for j in range(h):
                 height_map[i, j] = self.height_map[i, j]
@@ -58,6 +60,8 @@ class SimpleReliefMapper:
             shape=(dim // 2, dim - 1),
             dtype=float
         )
+
+        print("Starting loops for maxmipmap...")
 
         y_source = 0
         y_target = 0
@@ -90,6 +94,7 @@ class SimpleReliefMapper:
             y_source = y_target
             y_target += dim_
 
+        print("Done.")
         return result, n_levels
 
     @ti.func
