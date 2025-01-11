@@ -11,87 +11,132 @@ NEAR_INFINITE = 1e10
 class SimpleReliefMapper:
     def __init__(self, height_map: np.ndarray, cell_size=10.0):
         self.w, self.h = height_map.shape
-        self.dtype = height_map.dtype
         self.altitude = np.pi / 2
         self.height_map = ti.field(dtype=float, shape=(self.w, self.h))
         self.height_map.from_numpy(height_map)
-        self.max_value = np.max(self.height_map.to_numpy())
+        self.max_value = np.max(height_map)
+        self.min_value = np.min(height_map)
         self.pixels = ti.field(dtype=float, shape=(self.w, self.h))
         self.cell_size = cell_size
         self.maximum_ray_length = NEAR_INFINITE
-        self.maxmipmap, self.mipmap_shapes = self.get_maxmipmap()
+        self.maxmipmap, self.n_levels = self.get_maxmipmap()
+        pass
 
     def get_maxmipmap(self):
+        # calculate maximum mipmap using the height map as source image.
+        #
+        # If the source image does not have width/height that are of
+        # the form 2**n, we force it to be so for convenience purposes.
+        # this means filling the mipmap at lower levels with low values.
+        #
+        # First, calculate the maximum between the log of width and height.
         w, h = self.w, self.h
-        z = self.height_map.to_numpy()
+        log_w = np.log2(w)
+        log_h = np.log2(h)
+        max_log = max(log_w, log_h)
 
-        result = np.zeros(
-            shape=(w // 2 + 1 if w % 2 != 0 else w // 2, h),
-            dtype=self.dtype
+        # if the log is not an integer, we round up - this is the number of levels
+        n_levels = int(max_log) + (1 if max_log != int(max_log) else 0)
+        # print(n_levels)
+
+        # Then, calculate the dimension parameter of the mipmap.
+        dim = int(2**n_levels)
+
+        # we copy the original image into a larger image
+        height_map = ti.field(
+            shape=(dim, dim),
+            dtype=float
         )
 
-        level = 1
-        shapes = []
-        y0 = 0
-        while min(z.shape) > 1:
-            w, h = z.shape
-            w_ = w // 2 + (1 if w % 2 != 0 else 0)  # Handle odd width
-            h_ = h // 2 + (1 if h % 2 != 0 else 0)  # Handle odd height
-            shapes.append((w_, h_))
-            mipmap = np.zeros(shape=(w_, h_), dtype=self.dtype)
-            for i in range(w_):
-                for j in range(h_):
+        # fill the copy with original values
+        for i in range(w):
+            for j in range(h):
+                height_map[i, j] = self.height_map[i, j]
+
+        # we create a mipmap field using the dimension parameter
+        result = ti.field(
+            shape=(dim // 2, dim - 1),
+            dtype=float
+        )
+
+        y_source = 0
+        y_target = 0
+        dim_ = dim
+        for level in range(n_levels):
+            dim_ = dim_ // 2
+            # print(level, dim_)
+            # loop over new width and height to calculate the maximum of a window
+            for i in range(dim_):
+                for j in range(dim_):
                     # Define the window for max calculation
-                    i_end = min((i + 1) * 2, w)
-                    j_end = min((j + 1) * 2, h)
+                    i0 = i * 2
+                    j0 = y_source + j * 2
+                    i1 = (i + 1) * 2
+                    j1 = y_source + (j + 1) * 2
 
-                    # Calculate max for potentially smaller last block
-                    mipmap[i, j] = np.max(z[i * 2:i_end, j * 2:j_end])
+                    max_value = self.min_value
+                    # Calculate maximum over the window
+                    for u in range(i0, i1):
+                        for v in range(j0, j1):
+                            if level == 0:
+                                # initially, we calculate the maximum of the height map over the window
+                                max_value = ti.max(height_map[u, v], max_value)
+                            else:
+                                # once we have seeded the mipmap field, we can use it recursively
+                                max_value = ti.max(result[u, v], max_value)
 
-            result[0:w_, y0:y0 + h_] = mipmap
-            z = mipmap
-            y0 += h_
-            level += 1
+                    result[i, y_target + j] = max_value
 
-        # Final level: single maximum value over entire remaining z
-        max_value = np.max(z)
-        result[0, y0] = max_value
+            y_source = y_target
+            y_target += dim_
 
-        return result, np.array(shapes)
-
-
-    def get_mipmap_value(self, i, j, level):
-        # Initial check for level 0
-        if not(0 <= i < self.w and 0 <= j < self.h):
-            raise ValueError(f"Coordinates ({i}, {j}) are out of bounds for the original image of size {self.w}x{self.h}")
-
-        if level < 0:
-            raise ValueError("Level must be non-negative")
-        elif level == 0:
-            return self.height_map[i, j]
-        elif level > len(self.mipmap_shapes) - 1:
-            raise ValueError(f"Level exceeded maximum ({level} > {self.mipmap_levels - 1})")
-        else:
-            # level 0 = original heightmap
-            level_ = level - 1
-
-        w, h = self.mipmap_shapes[level_]
-        y = np.sum(self.mipmap_shapes[:level_, 1])
-        i_ = int(i * w / self.w)
-        j_ = y + int(j * h / self.h)
-        return self.maxmipmap[i_, j_]
-
+        return result, n_levels
 
     @ti.func
-    def get_partial_step_size(self, d: float, x: float) -> float:
+    def get_mipmap_value(self, i: int, j: int, level: int) -> float:
+        n = self.n_levels
+        # print(f"Number of levels: {n}, level requested: {level}")
+        result = -1.0  # fallback value
+        if 0 <= i < self.w and 0 <= j < self.h:
+            if level == 0:
+                result = float(self.height_map[i, j])
+            elif level <= n:
+                offset = 0
+                for l in range(level - 1):
+                    dim = 2**(n - l - 1)
+                    offset += dim
+                step = 2 ** level
+                i_ = int(i // step)
+                j_ = int(j // step)
+                # print(f"level: {level}, step: {step}, offset: {offset}, dim: {dim}, i: {i}, j: {j}, i_: {i_}, j_: {j_}")
+                result = float(self.maxmipmap[i_, offset + j_])
+        return result
+
+    @ti.kernel
+    def get_mipmap_value_python_scope(self, i: int, j: int, level: int) -> float:
+        return self.get_mipmap_value(i, j, level)
+
+    @ti.func
+    def get_partial_step_size(self, d: float, x: float, k: int) -> float:
+        """
+        Given a direction d, position x and magnitude k, find the length of the line
+        between a boundary (defined by x and scale 2**k) and x.
+
+        :param d:
+        :param x:
+        :param k:
+        :return:
+        """
         result = 0.0
+        step = 2 ** k
+        index = float(x // step)
         if d < 0.0:
-            lb = int(x)
-            if x % 1.0 == 0.0:
-                lb -= 1.0
+            lb = index * step
+            if x % step == 0.0:
+                lb -= step
             result = (x - lb) / -d
         elif d > 0.0:
-            ub = int(x) + 1
+            ub = (index + 1.0) * step
             result = (ub - x) / d
         elif d == 0.0:
             result = self.maximum_ray_length
@@ -100,17 +145,20 @@ class SimpleReliefMapper:
 
     @ti.func
     def max_test(self, x, y, z):
-        i, j = x // 1, y // 1
-        for k in range(self.mipmap_levels):
-            z_max = self.get_mipmap_value(i, j, level=k)
+        """Find the highest maxmipmap level where z > the associated z_max for that level at (x, y)"""
+        i, j = int(x), int(y)
+        z_max = float(self.min_value)  # fallback
+        final_level = 0  # fallback
+        for level in range(0, self.n_levels + 1):
+            z_max = self.get_mipmap_value(i, j, level=self.n_levels - level)
             if z_max < z:
+                final_level = level
                 break
-            i, j = i // 2, j // 2
-        return z_max, k
+        return z_max, final_level
 
     @ti.func
     def get_step_size_to_next_bbox(
-            self, x: float, y: float, z: float, dx: float, dy: float
+            self, x: float, y: float, z: float, dx: float, dy: float, classic: bool = True
     ) -> float:
         """
         Calculates the length a ray must travel before it hits
@@ -123,24 +171,45 @@ class SimpleReliefMapper:
         :param z:
         :param dx:
         :param dy:
+        :param classic:
         :return:
         """
-        z_max, k = self.max_test(x, y, z)
-        if z_max > z and k == 0:
-            #===========================================================#
-            # even at the smallest resolution,                          #
-            # the maximum height is above z.                            #
-            # therefore we conclude the ray is stopped.                 #
-            #===========================================================#
-            return 0.0
-        lx = self.get_partial_step_size(dx, x)
-        ly = self.get_partial_step_size(dy, y)
-        l = min(lx, ly)
-        l += EPSILON
-        return l
+        result = 0.0
+        if classic:
+            # "classic" mode: the ray traverses the scene one cell at a time
+            i, j = int(x), int(y)
+            if self.height_map[i, j] > z:
+                result = 0.0
+            else:
+                lx = self.get_partial_step_size(dx, x, 0)
+                ly = self.get_partial_step_size(dy, y, 0)
+                result = min(lx, ly)
+                result += EPSILON
+        else:
+            # "mipmap" mode: the ray can skip cells if it's above all
+            # cells in a given window at a hierarchical magnitude k
+
+            # ==============================================================#
+            # first, find the maximum z_max and hierarchical magnitude k    #
+            # ==============================================================#
+            z_max, k = self.max_test(x, y, z)
+            if z_max > z and k == 0:
+                #===========================================================#
+                # even at the smallest magnitude,                           #
+                # the maximum height is above z.                            #
+                # therefore we conclude the ray is stopped by the terrain.  #
+                #===========================================================#
+                result = 0.0
+            else:
+                # TODO: duplicate code, fix
+                lx = self.get_partial_step_size(dx, x, k)
+                ly = self.get_partial_step_size(dy, y, k)
+                result = min(lx, ly)
+                result += EPSILON
+        return result
 
     @ti.func
-    def trace(self, i, j, dx, dy, dz, amplitude):
+    def trace(self, i, j, dx, dy, dz, classic):
         result = 0.0
         w, h = self.height_map.shape
 
@@ -150,7 +219,7 @@ class SimpleReliefMapper:
         #===============================================================#
         x = i + ti.random(dtype=float)
         y = j + ti.random(dtype=float)
-        z = self.height_map[i, j] * amplitude
+        z = self.height_map[i, j]
 
         #===============================================================#
         # Now, we march the ray (x, y, z) forward by small steps until  #
@@ -161,23 +230,12 @@ class SimpleReliefMapper:
         while True:
             #===========================================================#
             # test if the ray has exited the x and y boundaries         #
-            # without colliding.                                        #
+            # without colliding, or if the ray's z value is higher than #
+            # the global maximum.                                       #
             # if so, set output to 1.0                                  #
             #===========================================================#
-            if not(0 < x < w and 0 < y < h):
+            if not(0 < x < w and 0 < y < h) or z > self.max_value:
                 result = 1.0
-                break
-
-            #===========================================================#
-            # ray is still within x and y boundaries -                  #
-            # test if the height map at the (x, y) coordinate           #
-            # is above the ray's z coordinate.                          #
-            # if so, the ray has hit the height map, and we return 0.0  #
-            #===========================================================#
-            i_ = int(x)
-            j_ = int(y)
-            z_ = self.height_map[i_, j_] * amplitude
-            if z_ > z:
                 break
 
             #===========================================================#
@@ -185,11 +243,13 @@ class SimpleReliefMapper:
             # by step size l. This will move the ray towards the next   #
             # bounding box.                                             #
             #===========================================================#
-            l = self.get_step_size_to_next_bbox(x, y, z, dx, dy)
+            l = self.get_step_size_to_next_bbox(x, y, z, dx, dy, classic=classic)
             if l == 0.0:
                 break
 
             #===========================================================#
+            # Propagate ray.                                            #
+            #                                                           #
             # we multiply dz by the cell size to account for the        #
             # shallowness of the terrain.                               #
             #                                                           #
@@ -202,25 +262,12 @@ class SimpleReliefMapper:
             y += l * dy
             z += l * dz * self.cell_size
 
-            # #===========================================================#
-            # # finally, if the ray's z value is higher than the entire   #
-            # # height map, it means it will never collide with it        #
-            # # (assuming dz > 0).                                        #
-            # #                                                           #
-            # # this is a safe but costly approach which could be         #
-            # # improved by checking nearby maximum values instead of the #
-            # # global maximum.                                           #
-            # #===========================================================#
-            # if z > max_value:
-            #     result = 1.0
-            #     break
-
         return result
 
     @ti.kernel
-    def render(self, dx: float, dy: float, dz: float, amplitude: float):
+    def render(self, dx: float, dy: float, dz: float, classic: bool):
         for i, j in self.pixels:
-            self.pixels[i, j] = self.trace(i, j, dx, dy, dz, amplitude)
+            self.pixels[i, j] = self.trace(i, j, dx, dy, dz, classic)
 
     def get_shape(self) -> tuple[int]:
         return self.pixels.shape

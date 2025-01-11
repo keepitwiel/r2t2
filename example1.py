@@ -5,19 +5,19 @@ from simple_relief_mapper import SimpleReliefMapper
 from height import simplex_height_map
 
 
-def run(renderer):
+def run(renderer: SimpleReliefMapper):
     window = ti.ui.Window(name='Window Title', res=renderer.get_shape(), fps_limit=30, pos=(0, 0))
     gui = window.get_gui()
     canvas = window.get_canvas()
-    vertical_scale = 1.0
     azimuth = 45 # light source horizontal direction, degrees
     altitude = 15 # light source vertical direction, degrees
+    classic = True
     while window.running:
         with gui.sub_window("Sub Window", 0.1, 0.1, 0.8, 0.2):
-            vertical_scale = gui.slider_float("vertical scale", vertical_scale, 0.0, 10.0)
             altitude = gui.slider_float("altitude (deg)", altitude, 0, 89)
+            classic = gui.checkbox("classic mode", classic)
         dx, dy, dz = renderer.get_direction(azimuth, altitude)
-        renderer.render(dx, dy, dz, vertical_scale)
+        renderer.render(dx, dy, dz, classic)
         canvas.set_image(renderer.get_image())
         window.show()
 

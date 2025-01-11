@@ -2,3 +2,5 @@ taichi
 numpy
 noise
 scipy
+tqdm
+opencv-python
