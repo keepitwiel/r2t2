@@ -1,6 +1,6 @@
 import taichi as ti
 
-ti.init(arch=ti.cpu)
+ti.init(arch=ti.vulkan)
 
 import numpy as np
 
@@ -13,7 +13,8 @@ NEAR_INFINITE = 1e10
 class SimpleReliefMapper:
     def __init__(self, height_map: np.ndarray, cell_size=1.0):
         self.w, self.h = height_map.shape
-        self.altitude = np.pi / 2
+        self.x_offset = 0.0
+        self.y_offset = 0.0
         self.height_map = ti.field(dtype=float, shape=(self.w, self.h))
         self.height_map.from_numpy(height_map)
         self.max_value = np.max(height_map)
@@ -226,7 +227,7 @@ class SimpleReliefMapper:
         return result
 
     @ti.func
-    def trace(self, i, j, dx, dy, dz, classic):
+    def trace(self, i, j, dx, dy, dz, classic, scale):
         result = 0.0
         w, h = self.height_map.shape
 
@@ -234,9 +235,13 @@ class SimpleReliefMapper:
         # within cell (i, j), randomly pick an (x, y) coordinate.       #
         # the z coordinate is equal to the height map at (i, j).        #
         #===============================================================#
-        x = i + ti.random(dtype=float)
-        y = j + ti.random(dtype=float)
-        z = self.height_map[i, j]
+        x_ = i + ti.random(dtype=float)
+        y_ = j + ti.random(dtype=float)
+
+        x = self.x_offset + scale * x_
+        y = self.y_offset + scale * y_
+
+        z = self.height_map[int(x), int(y)]
 
         #===============================================================#
         # Now, we march the ray (x, y, z) forward by small steps until  #
@@ -282,9 +287,9 @@ class SimpleReliefMapper:
         return result
 
     @ti.kernel
-    def render(self, dx: float, dy: float, dz: float, classic: bool):
+    def render(self, dx: float, dy: float, dz: float, classic: bool, scale: float):
         for i, j in self.pixels:
-            self.pixels[i, j] = self.trace(i, j, dx, dy, dz, classic)
+            self.pixels[i, j] = self.trace(i, j, dx, dy, dz, classic, scale)
 
     def get_shape(self) -> tuple[int]:
         return self.pixels.shape
