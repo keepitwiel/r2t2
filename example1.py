@@ -14,6 +14,7 @@ def run(renderer: SimpleReliefMapper):
     classic = True
     while window.running:
         with gui.sub_window("Sub Window", 0.1, 0.1, 0.8, 0.2):
+            gui.text(f"azimuth: {azimuth:.0f} degrees")
             altitude = gui.slider_float("altitude (deg)", altitude, 0, 89)
             classic = gui.checkbox("classic mode", classic)
         dx, dy, dz = renderer.get_direction(azimuth, altitude)
@@ -26,11 +27,22 @@ def run(renderer: SimpleReliefMapper):
 
 
 def example_map_1(n):
-    """A height map generated from simplex noise. In the middle, a small square area gets a value of 0."""
+    """A height map generated from simplex noise with dimension n.
+    In the middle, a small plateau is defined with
+    height 0, and inside that plateau a tower
+    of height n is placed.
+    :param n: map dimension
+    :return: a 2D height map in the form of a numpy array.
+    """
     octaves = int(np.log2(n))
     z = simplex_height_map(dim=n, octaves=octaves, amplitude=n, seed=42)
     z = np.float32(z)
+
+    # middle plateau
     z[n // 2 - n // 8:n // 2 + n // 8, n // 2 - n // 8:n // 2 + n // 8] = 0
+
+    # middle tower
+    z[n // 2 - n // 32:n // 2 + n // 32, n // 2 - n // 32:n // 2 + n // 32] = n
     return z
 
 
@@ -39,7 +51,7 @@ def main(n):
     z = example_map_1(n)
 
     # initialize renderer
-    renderer = SimpleReliefMapper(height_map=z)
+    renderer = SimpleReliefMapper(height_map=z, cell_size=1.0)
 
     # run app
     run(renderer)
