@@ -1,4 +1,6 @@
-import taichi as ti; ti.init(arch=ti.cpu)
+import taichi as ti
+
+ti.init(arch=ti.cpu)
 
 import numpy as np
 
@@ -9,7 +11,7 @@ NEAR_INFINITE = 1e10
 
 @ti.data_oriented
 class SimpleReliefMapper:
-    def __init__(self, height_map: np.ndarray, cell_size=10.0):
+    def __init__(self, height_map: np.ndarray, cell_size=1.0):
         self.w, self.h = height_map.shape
         self.altitude = np.pi / 2
         self.height_map = ti.field(dtype=float, shape=(self.w, self.h))
@@ -19,8 +21,8 @@ class SimpleReliefMapper:
         self.pixels = ti.field(dtype=float, shape=(self.w, self.h))
         self.cell_size = cell_size
         self.maximum_ray_length = NEAR_INFINITE
-        self.maxmipmap, self.n_levels = self.get_maxmipmap()
-        pass
+        self.height_map_copy, self.maxmipmap, self.n_levels = self.get_maxmipmap()
+        self.fill_maxmipmap()
 
     def get_maxmipmap(self):
         # calculate maximum mipmap using the height map as source image.
@@ -48,25 +50,34 @@ class SimpleReliefMapper:
             shape=(dim, dim),
             dtype=float
         )
-
-        # fill the copy with original values
-        print("fill the copy with original values...")
-        for i in range(w):
-            for j in range(h):
-                height_map[i, j] = self.height_map[i, j]
+        height_map.fill(-np.inf)
 
         # we create a mipmap field using the dimension parameter
         result = ti.field(
             shape=(dim // 2, dim - 1),
             dtype=float
         )
+        result.fill(-np.inf)
+
+        return height_map, result, n_levels
+
+    @ti.kernel
+    def fill_maxmipmap(self):
+        w, h = self.w, self.h
+        dim = int(2**self.n_levels)
+
+        # fill the copy with original values
+        print("fill the copy with original values...")
+        for i in range(w):
+            for j in range(h):
+                self.height_map_copy[i, j] = self.height_map[i, j]
 
         print("Starting loops for maxmipmap...")
 
         y_source = 0
         y_target = 0
         dim_ = dim
-        for level in range(n_levels):
+        for level in range(self.n_levels):
             dim_ = dim_ // 2
             # print(level, dim_)
             # loop over new width and height to calculate the maximum of a window
@@ -84,18 +95,17 @@ class SimpleReliefMapper:
                         for v in range(j0, j1):
                             if level == 0:
                                 # initially, we calculate the maximum of the height map over the window
-                                max_value = ti.max(height_map[u, v], max_value)
+                                max_value = ti.max(self.height_map[u, v], max_value)
                             else:
                                 # once we have seeded the mipmap field, we can use it recursively
-                                max_value = ti.max(result[u, v], max_value)
+                                max_value = ti.max(self.maxmipmap[u, v], max_value)
 
-                    result[i, y_target + j] = max_value
+                    self.maxmipmap[i, y_target + j] = max_value
 
             y_source = y_target
             y_target += dim_
 
         print("Done.")
-        return result, n_levels
 
     @ti.func
     def get_mipmap_value(self, i: int, j: int, level: int) -> float:
@@ -107,8 +117,8 @@ class SimpleReliefMapper:
                 result = float(self.height_map[i, j])
             elif level <= n:
                 offset = 0
-                for l in range(level - 1):
-                    dim = 2**(n - l - 1)
+                for l in range(1, level):
+                    dim = 2**(n - l)
                     offset += dim
                 step = 2 ** level
                 i_ = int(i // step)
@@ -154,10 +164,12 @@ class SimpleReliefMapper:
         i, j = int(x), int(y)
         z_max = float(self.min_value)  # fallback
         final_level = 0  # fallback
-        for level in range(0, self.n_levels + 1):
-            z_max = self.get_mipmap_value(i, j, level=self.n_levels - level)
+        # for level in range(0, self.n_levels + 1):
+        for level in range(self.n_levels + 1):
+            level_ = self.n_levels - level
+            z_max = self.get_mipmap_value(i, j, level=level_)
             if z_max < z:
-                final_level = level
+                final_level = level_
                 break
         return z_max, final_level
 
