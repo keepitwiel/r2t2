@@ -1,6 +1,6 @@
 import taichi as ti
 
-ti.init(arch=ti.cpu)
+ti.init(arch=ti.vulkan)
 
 import numpy as np
 
@@ -13,7 +13,8 @@ NEAR_INFINITE = 1e10
 class SimpleReliefMapper:
     def __init__(self, height_map: np.ndarray, cell_size=1.0):
         self.w, self.h = height_map.shape
-        self.altitude = np.pi / 2
+        self.x_offset = 0.0
+        self.y_offset = 0.0
         self.height_map = ti.field(dtype=float, shape=(self.w, self.h))
         self.height_map.from_numpy(height_map)
         self.max_value = np.max(height_map)
@@ -21,10 +22,10 @@ class SimpleReliefMapper:
         self.pixels = ti.field(dtype=float, shape=(self.w, self.h))
         self.cell_size = cell_size
         self.maximum_ray_length = NEAR_INFINITE
-        self.height_map_copy, self.maxmipmap, self.n_levels = self.get_maxmipmap()
+        self.height_map_copy, self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
         self.fill_maxmipmap()
 
-    def get_maxmipmap(self):
+    def initialize_maxmipmap(self):
         # calculate maximum mipmap using the height map as source image.
         #
         # If the source image does not have width/height that are of
@@ -77,7 +78,7 @@ class SimpleReliefMapper:
         y_source = 0
         y_target = 0
         dim_ = dim
-        for level in range(self.n_levels):
+        for level in range(self.n_levels + 1):
             dim_ = dim_ // 2
             # print(level, dim_)
             # loop over new width and height to calculate the maximum of a window
@@ -226,7 +227,7 @@ class SimpleReliefMapper:
         return result
 
     @ti.func
-    def trace(self, i, j, dx, dy, dz, classic):
+    def trace(self, i, j, dx, dy, dz, classic, zoom):
         result = 0.0
         w, h = self.height_map.shape
 
@@ -234,9 +235,13 @@ class SimpleReliefMapper:
         # within cell (i, j), randomly pick an (x, y) coordinate.       #
         # the z coordinate is equal to the height map at (i, j).        #
         #===============================================================#
-        x = i + ti.random(dtype=float)
-        y = j + ti.random(dtype=float)
-        z = self.height_map[i, j]
+        x_ = i + ti.random(dtype=float)
+        y_ = j + ti.random(dtype=float)
+
+        x = self.x_offset + x_ / zoom
+        y = self.y_offset + y_ / zoom
+
+        z = self.height_map[int(x), int(y)]
 
         #===============================================================#
         # Now, we march the ray (x, y, z) forward by small steps until  #
@@ -282,9 +287,15 @@ class SimpleReliefMapper:
         return result
 
     @ti.kernel
-    def render(self, dx: float, dy: float, dz: float, classic: bool):
+    def render(self, dx: float, dy: float, dz: float, classic: bool, zoom: float, spp: int, lsw: float):
         for i, j in self.pixels:
-            self.pixels[i, j] = self.trace(i, j, dx, dy, dz, classic)
+            self.pixels[i, j] = 0.0
+            for _ in range(spp):
+                dx_ = dx + ti.random() * lsw / 100
+                dy_ = dy + ti.random() * lsw / 100
+                dz_ = dz + ti.random() * lsw / 100
+                self.pixels[i, j] += self.trace(i, j, dx_, dy_, dz_, classic, zoom) / spp
+            # self.pixels[i, j] = self.trace(i, j, dx, dy, dz, classic, zoom)
 
     def get_shape(self) -> tuple[int]:
         return self.pixels.shape

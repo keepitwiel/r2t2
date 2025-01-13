@@ -9,9 +9,9 @@ from simple_relief_mapper import SimpleReliefMapper
 
 
 def main():
-    height_map = face(gray=True)[::256, ::256]
+    height_map = face(gray=True)[::256, ::256].astype(np.float32)
     renderer = SimpleReliefMapper(height_map)
-    mipmap = renderer.maxmipmap.to_numpy().astype(np.uint8)
+    mipmap = renderer.maxmipmap.to_numpy()
 
     print("height map:")
     print(height_map)
