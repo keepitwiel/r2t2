@@ -1,30 +1,39 @@
 import taichi as ti
 import numpy as np
+from taichi.examples.rendering.rasterizer import height
 
 from simple_relief_mapper import SimpleReliefMapper
 from height import simplex_height_map
 
 
 def run(renderer: SimpleReliefMapper):
-    window = ti.ui.Window(name='Example 1', res=(1024, 512), fps_limit=60, pos=(0, 0))
+    window = ti.ui.Window(name='Example 1', res=(800, 600), fps_limit=60, pos=(0, 0))
     gui = window.get_gui()
     canvas = window.get_canvas()
+
+    zoom = 1.0
+    height_map = False
+    spp = 1
+
+    maxmipmap = False
+
     azimuth = 45.0 # light source horizontal direction, degrees
     altitude = 45.0 # light source vertical direction, degrees
-    maxmipmap = True
-    zoom = 1.0
-    spp = 1
     sun_width = 0.0
     sun_color = (1.0, 0.9, 0.0)
-    sky_color = (0.0, 0.0, 0.5)
+
+    sky_color = (0.2, 0.2, 1.0)
+
+    out_image = np.zeros((800, 600, 3), dtype=np.float32)
 
     while window.running:
         with gui.sub_window("Camera", 0.5, 0.1, 0.5, 0.2):
             zoom = gui.slider_float("Zoom", zoom, 0.1, 10.0)
+            height_map = gui.checkbox("Show height map", height_map)
+            spp = gui.slider_int("Samples per pixel", spp, 1, 16)
 
         with gui.sub_window("Algorithm", 0.5, 0.3, 0.5, 0.2):
             maxmipmap = gui.checkbox("Enable MaxMipMap", maxmipmap)
-            spp = gui.slider_int("Samples per pixel", spp, 1, 16)
 
         with gui.sub_window("Sun", 0.5, 0.5, 0.5, 0.2):
             gui.text(f"Azimuth: {azimuth:.0f} degrees")
@@ -45,7 +54,14 @@ def run(renderer: SimpleReliefMapper):
             sun_color=sun_color,
             sky_color=sky_color,
         )
-        canvas.set_image(renderer.get_image())
+        if height_map:
+            out_image[:renderer.w, :renderer.h, 0] = renderer.height_map.to_numpy().astype(np.float32)
+            out_image[:renderer.w, :renderer.h, 1] = renderer.height_map.to_numpy().astype(np.float32)
+            out_image[:renderer.w, :renderer.h, 2] = renderer.height_map.to_numpy().astype(np.float32)
+            canvas.set_image((out_image - np.float32(renderer.min_value)) / np.float32(renderer.max_value - renderer.min_value))
+        else:
+            out_image[:renderer.w, :renderer.h] = renderer.get_image()
+            canvas.set_image(out_image)
         window.show()
 
         # the following rotates the azimuth between 0 and 360 degrees, with increments of 1 degree per step
@@ -69,15 +85,19 @@ def example_map_1(n):
 
     # middle tower
     z[n // 2 - n // 32:n // 2 + n // 32, n // 2 - n // 32:n // 2 + n // 32] = n
-    return z
+
+    # color
+    c = np.random.uniform(0.2, 0.8, size=(n, n)).astype(np.float32)
+    c = np.stack([c, c, c], axis=2)
+    return z, c
 
 
 def main(n):
     # define height map
-    z = example_map_1(n)
+    z, c = example_map_1(n)
 
     # initialize renderer
-    renderer = SimpleReliefMapper(height_map=z, cell_size=1.0)
+    renderer = SimpleReliefMapper(height_map=z, map_color=c, cell_size=1.0)
 
     # run app
     run(renderer)

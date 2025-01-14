@@ -11,7 +11,7 @@ NEAR_INFINITE = 1e10
 
 @ti.data_oriented
 class SimpleReliefMapper:
-    def __init__(self, height_map: np.ndarray, cell_size=1.0):
+    def __init__(self, height_map: np.ndarray, map_color: np.ndarray, cell_size=1.0):
         self.w, self.h = height_map.shape
         self.x_offset = 0.0
         self.y_offset = 0.0
@@ -19,6 +19,8 @@ class SimpleReliefMapper:
         self.height_map.from_numpy(height_map)
         self.max_value = np.max(height_map)
         self.min_value = np.min(height_map)
+        self.map_color = ti.Vector.field(n=3, dtype=float, shape=(self.w, self.h))
+        self.map_color.from_numpy(map_color)
         self.pixels = ti.Vector.field(n=3, dtype=float, shape=(self.w, self.h))
         self.cell_size = cell_size
         self.maximum_ray_length = NEAR_INFINITE
@@ -228,7 +230,7 @@ class SimpleReliefMapper:
 
     @ti.func
     def trace(self, i, j, dx, dy, dz, maxmipmap, zoom):
-        result = 0.0
+        result = ti.Vector([0.0, 0.0, 0.0])
         w, h = self.height_map.shape
 
         #===============================================================#
@@ -241,48 +243,50 @@ class SimpleReliefMapper:
         x = self.x_offset + x_ / zoom
         y = self.y_offset + y_ / zoom
 
-        z = self.height_map[int(x), int(y)]
+        if 0 <= x <= w and 0 <= y <= h:
+            z = self.height_map[int(x), int(y)]
+            c = self.map_color[int(x), int(y)]
 
-        #===============================================================#
-        # Now, we march the ray (x, y, z) forward by small steps until  #
-        # it either "hits" the height map, exits the horizontal         #
-        # boundaries without hitting the height map, or goes above the  #
-        # highest value in the height map.                              #
-        #===============================================================#
-        while True:
-            #===========================================================#
-            # test if the ray has exited the x and y boundaries         #
-            # without colliding, or if the ray's z value is higher than #
-            # the global maximum.                                       #
-            # if so, set output to 1.0                                  #
-            #===========================================================#
-            if not(0 < x < w and 0 < y < h) or z > self.max_value:
-                result = 1.0
-                break
+            #===============================================================#
+            # Now, we march the ray (x, y, z) forward by small steps until  #
+            # it either "hits" the height map, exits the horizontal         #
+            # boundaries without hitting the height map, or goes above the  #
+            # highest value in the height map.                              #
+            #===============================================================#
+            while True:
+                #===========================================================#
+                # test if the ray has exited the x and y boundaries         #
+                # without colliding, or if the ray's z value is higher than #
+                # the global maximum.                                       #
+                # if so, set output to 1.0                                  #
+                #===========================================================#
+                if not(0 < x < w and 0 < y < h) or z > self.max_value:
+                    result = c
+                    break
 
-            #===========================================================#
-            # the ray is still above the terrain, so march it forward   #
-            # by step size l. This will move the ray towards the next   #
-            # bounding box.                                             #
-            #===========================================================#
-            l = self.get_step_size_to_next_bbox(x, y, z, dx, dy, maxmipmap=maxmipmap)
-            if l == 0.0:
-                break
+                #===========================================================#
+                # the ray is still above the terrain, so march it forward   #
+                # by step size l. This will move the ray towards the next   #
+                # bounding box.                                             #
+                #===========================================================#
+                l = self.get_step_size_to_next_bbox(x, y, z, dx, dy, maxmipmap=maxmipmap)
+                if l == 0.0:
+                    break
 
-            #===========================================================#
-            # Propagate ray.                                            #
-            #                                                           #
-            # we multiply dz by the cell size to account for the        #
-            # shallowness of the terrain.                               #
-            #                                                           #
-            # cell_size = size of each height map cell relative to      #
-            # height.                                                   #
-            # if cell_size = 1.0, then the horizontal dimensions (x, y) #
-            # are in proportion to the vertical dimension (z)           #
-            #===========================================================#
-            x += l * dx
-            y += l * dy
-            z += l * dz * self.cell_size
+                #===========================================================#
+                # Propagate ray.                                            #
+                #                                                           #
+                # we multiply dz by the cell size to account for the        #
+                # shallowness of the terrain.                               #
+                #                                                           #
+                # cell_size = size of each height map cell relative to      #
+                # height.                                                   #
+                # if cell_size = 1.0, then the horizontal dimensions (x, y) #
+                # are in proportion to the vertical dimension (z)           #
+                #===========================================================#
+                x += l * dx
+                y += l * dy
+                z += l * dz * self.cell_size
 
         return result
 
@@ -317,7 +321,7 @@ class SimpleReliefMapper:
         return self.pixels.shape
 
     def get_image(self):
-        return self.pixels
+        return self.pixels.to_numpy().astype(np.float32)
 
     @staticmethod
     @ti.func
