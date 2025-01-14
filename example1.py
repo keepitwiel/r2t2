@@ -6,26 +6,45 @@ from height import simplex_height_map
 
 
 def run(renderer: SimpleReliefMapper):
-    window = ti.ui.Window(name='Example 1', res=renderer.get_shape(), fps_limit=60, pos=(0, 0))
+    window = ti.ui.Window(name='Example 1', res=(1024, 512), fps_limit=60, pos=(0, 0))
     gui = window.get_gui()
     canvas = window.get_canvas()
     azimuth = 45.0 # light source horizontal direction, degrees
     altitude = 45.0 # light source vertical direction, degrees
-    classic = True
+    maxmipmap = True
     zoom = 1.0
     spp = 1
-    light_source_width = 0.0
-    while window.running:
-        with gui.sub_window("Sub Window", 0.1, 0.1, 0.8, 0.3):
-            classic = gui.checkbox("classic mode", classic)
-            gui.text(f"azimuth: {azimuth:.0f} degrees")
-            altitude = gui.slider_float("altitude (deg)", altitude, 0, 89)
-            zoom = gui.slider_float("zoom", zoom, 0.1, 10.0)
-            spp = gui.slider_int("samples per pixel", spp, 1, 16)
-            light_source_width = gui.slider_float("light source width (degrees)", light_source_width, 0.0, 5.0)
+    sun_width = 0.0
+    sun_color = (1.0, 0.9, 0.0)
+    sky_color = (0.0, 0.0, 0.5)
 
-        dx, dy, dz = renderer.get_direction(azimuth, altitude)
-        renderer.render(dx, dy, dz, classic, zoom, spp=spp, lsw=light_source_width)
+    while window.running:
+        with gui.sub_window("Camera", 0.5, 0.1, 0.5, 0.2):
+            zoom = gui.slider_float("Zoom", zoom, 0.1, 10.0)
+
+        with gui.sub_window("Algorithm", 0.5, 0.3, 0.5, 0.2):
+            maxmipmap = gui.checkbox("Enable MaxMipMap", maxmipmap)
+            spp = gui.slider_int("Samples per pixel", spp, 1, 16)
+
+        with gui.sub_window("Sun", 0.5, 0.5, 0.5, 0.2):
+            gui.text(f"Azimuth: {azimuth:.0f} degrees")
+            altitude = gui.slider_float("Altitude (degrees)", altitude, 0, 89)
+            sun_width = gui.slider_float("Sun width (degrees)", sun_width, 0.0, 5.0)
+            sun_color = gui.color_edit_3("Color", sun_color)
+
+        with gui.sub_window("Sky", 0.5, 0.7, 0.5, 0.2):
+            sky_color = gui.color_edit_3("Color", sky_color)
+
+        renderer.render(
+            azimuth,
+            altitude,
+            maxmipmap,
+            zoom,
+            spp=spp,
+            sun_width=sun_width,
+            sun_color=sun_color,
+            sky_color=sky_color,
+        )
         canvas.set_image(renderer.get_image())
         window.show()
 

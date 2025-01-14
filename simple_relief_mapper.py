@@ -19,7 +19,7 @@ class SimpleReliefMapper:
         self.height_map.from_numpy(height_map)
         self.max_value = np.max(height_map)
         self.min_value = np.min(height_map)
-        self.pixels = ti.field(dtype=float, shape=(self.w, self.h))
+        self.pixels = ti.Vector.field(n=3, dtype=float, shape=(self.w, self.h))
         self.cell_size = cell_size
         self.maximum_ray_length = NEAR_INFINITE
         self.height_map_copy, self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
@@ -176,7 +176,7 @@ class SimpleReliefMapper:
 
     @ti.func
     def get_step_size_to_next_bbox(
-            self, x: float, y: float, z: float, dx: float, dy: float, classic: bool = True
+            self, x: float, y: float, z: float, dx: float, dy: float, maxmipmap: bool = True
     ) -> float:
         """
         Calculates the length a ray must travel before it hits
@@ -189,11 +189,11 @@ class SimpleReliefMapper:
         :param z:
         :param dx:
         :param dy:
-        :param classic:
+        :param maxmipmap:
         :return:
         """
         result = 0.0
-        if classic:
+        if not maxmipmap:
             # "classic" mode: the ray traverses the scene one cell at a time
             i, j = int(x), int(y)
             if self.height_map[i, j] > z:
@@ -227,7 +227,7 @@ class SimpleReliefMapper:
         return result
 
     @ti.func
-    def trace(self, i, j, dx, dy, dz, classic, zoom):
+    def trace(self, i, j, dx, dy, dz, maxmipmap, zoom):
         result = 0.0
         w, h = self.height_map.shape
 
@@ -265,7 +265,7 @@ class SimpleReliefMapper:
             # by step size l. This will move the ray towards the next   #
             # bounding box.                                             #
             #===========================================================#
-            l = self.get_step_size_to_next_bbox(x, y, z, dx, dy, classic=classic)
+            l = self.get_step_size_to_next_bbox(x, y, z, dx, dy, maxmipmap=maxmipmap)
             if l == 0.0:
                 break
 
@@ -287,15 +287,31 @@ class SimpleReliefMapper:
         return result
 
     @ti.kernel
-    def render(self, dx: float, dy: float, dz: float, classic: bool, zoom: float, spp: int, lsw: float):
+    def render(
+            self,
+            azimuth: float,
+            altitude: float,
+            maxmipmap: bool,
+            zoom: float,
+            spp: int,
+            sun_width: float,
+            sun_color: ti.math.vec3,
+            sky_color: ti.math.vec3,
+    ):
         for i, j in self.pixels:
-            self.pixels[i, j] = 0.0
+            self.pixels[i, j] = ti.Vector([0.0, 0.0, 0.0])
             for _ in range(spp):
-                dx_ = dx + ti.random() * lsw / 100
-                dy_ = dy + ti.random() * lsw / 100
-                dz_ = dz + ti.random() * lsw / 100
-                self.pixels[i, j] += self.trace(i, j, dx_, dy_, dz_, classic, zoom) / spp
-            # self.pixels[i, j] = self.trace(i, j, dx, dy, dz, classic, zoom)
+                # trace path to sun
+                dx, dy, dz = self.get_direction(azimuth, altitude, sun_width)
+                self.pixels[i, j] += sun_color * self.trace(i, j, dx, dy, dz, maxmipmap, zoom) / spp / 2
+
+                # trace path to sky
+                az = ti.random(float) * 360.0
+                al = ti.asin(ti.random(float)) * 90.0
+                dx, dy, dz = self.get_direction(az, al, 0.0)
+                self.pixels[i, j] += sky_color * self.trace(i, j, dx, dy, dz, maxmipmap, zoom) / spp / 2
+
+            self.pixels[i, j] = self.pixels[i, j] ** (1.0/2.2)
 
     def get_shape(self) -> tuple[int]:
         return self.pixels.shape
@@ -304,10 +320,13 @@ class SimpleReliefMapper:
         return self.pixels
 
     @staticmethod
-    def get_direction(azimuth, altitude):
-        azi_rad = azimuth * np.pi / 180
-        alt_rad = altitude * np.pi / 180
-        dx = np.cos(alt_rad) * np.cos(azi_rad)
-        dy = np.cos(alt_rad) * np.sin(azi_rad)
-        dz = np.sin(alt_rad)
+    @ti.func
+    def get_direction(azimuth, altitude, sun_width):
+        u = sun_width * (ti.random(float) - 0.5)
+        v = sun_width * (ti.random(float) - 0.5)
+        azi_rad = (azimuth + u) * np.pi / 180
+        alt_rad = (altitude + v) * np.pi / 180
+        dx = ti.cos(alt_rad) * ti.cos(azi_rad)
+        dy = ti.cos(alt_rad) * ti.sin(azi_rad)
+        dz = ti.sin(alt_rad)
         return dx, dy, dz
