@@ -10,7 +10,7 @@ def main():
     renderer = SimpleReliefMapper(height_map)
     pbar = tqdm()
     while True:
-        renderer.render(dx=1.0, dy=1.0, dz=1.0, classic=False, scale=1.0)
+        renderer.render(dx=1.0, dy=1.0, dz=1.0, maxmipmap=False, scale=1.0)
         pbar.update()
 
 
