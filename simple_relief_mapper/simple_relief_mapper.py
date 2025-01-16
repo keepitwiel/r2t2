@@ -13,7 +13,7 @@ class SimpleReliefMapper:
         self.max_value = np.max(height_map)
         self.min_value = np.min(height_map)
         self.map_color = ti.Vector.field(n=3, dtype=float, shape=(self.w, self.h))
-        if map_color:
+        if map_color is not None:
             self.map_color.from_numpy(map_color)
         else:
             self.map_color.fill(ti.Vector([1.0, 1.0, 1.0]))

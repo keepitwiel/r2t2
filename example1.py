@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 
 from simple_relief_mapper import SimpleReliefMapper
-from height import simplex_height_map
+from simple_relief_mapper import simplex_height_map
 
 
 def run(renderer: SimpleReliefMapper):
