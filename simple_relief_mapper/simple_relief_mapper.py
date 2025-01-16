@@ -94,10 +94,24 @@ class SimpleReliefMapper:
         return result
 
     @ti.func
-    def collide(self, i, j, dx, dy, dz, maxmipmap, zoom):
+    def collide(
+        self,
+        i: int,
+        j: int,
+        dx: float,
+        dy: float,
+        dz: float,
+        maxmipmap: bool,
+        zoom: float,
+        l_max: float,
+        random_xy: bool,
+    ):
+        l = 0.0
         result = ti.Vector([0.0, 0.0, 0.0])
-        x_ = i + ti.random(dtype=float)
-        y_ = j + ti.random(dtype=float)
+        dx_ = ti.random(dtype=float) if random_xy else 0.5
+        dy_ = ti.random(dtype=float) if random_xy else 0.5
+        x_ = i + dx_
+        y_ = j + dy_
         x = self.x_offset + x_ / zoom
         y = self.y_offset + y_ / zoom
         if 0 <= x <= self.w and 0 <= y <= self.h:
@@ -108,15 +122,15 @@ class SimpleReliefMapper:
                     result = c
                     break
                 else:
-                    l = self.get_propagation_length(x, y, z, dx, dy, maxmipmap)
-                    if l == 0.0:
+                    dl = self.get_propagation_length(x, y, z, dx, dy, maxmipmap)
+                    if dl == 0.0:
                         break
+                    l += dl
+                    x += dl * dx
+                    y += dl * dy
+                    z += dl * dz * self.cell_size
 
-                    x += l * dx
-                    y += l * dy
-                    z += l * dz * self.cell_size
-
-                    if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h:
+                    if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or l >= l_max:
                         result = c
                         break
 
@@ -133,19 +147,25 @@ class SimpleReliefMapper:
             sun_width: float,
             sun_color: ti.math.vec3,
             sky_color: ti.math.vec3,
+            l_max: float,
+            random_xy: bool,
     ):
         for i, j in self.pixels:
             self.pixels[i, j] = ti.Vector([0.0, 0.0, 0.0])
             for _ in range(spp):
                 # trace path to sun
                 dx, dy, dz = self.get_direction(azimuth, altitude, sun_width)
-                self.pixels[i, j] += sun_color * self.collide(i, j, dx, dy, dz, maxmipmap, zoom) / spp / 2
+                self.pixels[i, j] += sun_color * self.collide(
+                    i, j, dx, dy, dz, maxmipmap, zoom, l_max, random_xy
+                ) / spp / 2
 
                 # trace path to sky
                 az = ti.random(float) * 360.0
                 al = ti.asin(ti.random(float)) * 90.0
                 dx, dy, dz = self.get_direction(az, al, 0.0)
-                self.pixels[i, j] += sky_color * self.collide(i, j, dx, dy, dz, maxmipmap, zoom) / spp / 2
+                self.pixels[i, j] += sky_color * self.collide(
+                    i, j, dx, dy, dz, maxmipmap, zoom, l_max, random_xy
+                ) / spp / 2
 
             # gamma correction
             self.pixels[i, j] = self.pixels[i, j] ** (1.0/2.2)

@@ -13,8 +13,11 @@ def run(renderer: SimpleReliefMapper):
     zoom = 1.0
     height_map = False
     spp = 1
+    l_max_max = 2**renderer.n_levels
+    l_max = l_max_max
 
     maxmipmap = False
+    random_xy = True
 
     azimuth = 45.0 # light source horizontal direction, degrees
     altitude = 45.0 # light source vertical direction, degrees
@@ -33,6 +36,8 @@ def run(renderer: SimpleReliefMapper):
 
         with gui.sub_window("Algorithm", 0.5, 0.3, 0.5, 0.2):
             maxmipmap = gui.checkbox("Enable MaxMipMap", maxmipmap)
+            l_max = gui.slider_float("Maximum ray length", l_max, 0.0, l_max_max)
+            random_xy = gui.checkbox("Randomize ray spawn point within pixel", random_xy)
 
         with gui.sub_window("Sun", 0.5, 0.5, 0.5, 0.2):
             gui.text(f"Azimuth: {azimuth:.0f} degrees")
@@ -52,6 +57,8 @@ def run(renderer: SimpleReliefMapper):
             sun_width=sun_width,
             sun_color=sun_color,
             sky_color=sky_color,
+            l_max=l_max,
+            random_xy=random_xy,
         )
         if height_map:
             out_image[:renderer.w, :renderer.h, 0] = renderer.height_map.to_numpy().astype(np.float32)
