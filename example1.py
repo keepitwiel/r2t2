@@ -1,13 +1,12 @@
 import taichi as ti
 import numpy as np
-from taichi.examples.rendering.rasterizer import height
 
 from simple_relief_mapper import SimpleReliefMapper
 from height import simplex_height_map
 
 
 def run(renderer: SimpleReliefMapper):
-    window = ti.ui.Window(name='Example 1', res=(800, 600), fps_limit=60, pos=(0, 0))
+    window = ti.ui.Window(name='Example 1', res=(1200, 600), fps_limit=60, pos=(0, 0))
     gui = window.get_gui()
     canvas = window.get_canvas()
 
@@ -24,7 +23,7 @@ def run(renderer: SimpleReliefMapper):
 
     sky_color = (0.2, 0.2, 1.0)
 
-    out_image = np.zeros((800, 600, 3), dtype=np.float32)
+    out_image = np.zeros((1200, 600, 3), dtype=np.float32)
 
     while window.running:
         with gui.sub_window("Camera", 0.5, 0.1, 0.5, 0.2):
@@ -104,4 +103,5 @@ def main(n):
 
 
 if __name__ == "__main__":
+    ti.init(arch=ti.cpu)
     main(n=512)
