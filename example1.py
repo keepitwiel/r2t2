@@ -34,29 +34,29 @@ def run(renderer: SimpleReliefMapper):
 
     auto_render = True
     while window.running:
-        x, y = window.get_cursor_pos()
-        if x < 512 / 1200 and y < 512 / 600:
-            auto_render = False
-            with gui.sub_window("debug", x, 1.0 - y, 0.2, 0.5):
-                i = int(x * 1200)
-                j = int(y * 600)
-                gui.text(f"{x:0.2f}, {y:0.2f}, {i}, {j}")
-                n_levels = renderer.n_levels if maxmipmap else 1
-                counter, l, h, step = renderer.maxmipmap_debug(
-                    i, j, zoom, azimuth, altitude, n_levels
-                )
-                gui.text(f"Height at {i}, {j}: {h:0.2f}")
-                gui.text(f"maxmipmap level 1: {renderer.maxmipmap[i // 2, 0 + j // 2]}")
-                gui.text(f"maxmipmap level 2: {renderer.maxmipmap[i // 4, 256 + j // 4]}")
-                gui.text(f"maxmipmap level 3: {renderer.maxmipmap[i // 8, 384 + j // 8]}")
-                gui.text(f"maxmipmap level 4: {renderer.maxmipmap[i // 16, 448 + j // 16]}")
-                gui.text(f"maxmipmap level 5: {renderer.maxmipmap[i // 32, 480 + j // 32]}")
-                gui.text(f"maxmipmap level 6: {renderer.maxmipmap[i // 64, 496 + j // 64]}")
-                gui.text(f"Number of steps: {counter}")
-                gui.text(f"Ray length: {l:0.2f}")
-                gui.text(f"Last step size: {step}")
-        else:
-            auto_render = True
+        # x, y = window.get_cursor_pos()
+        # if x < 512 / 1200 and y < 512 / 600:
+        #     auto_render = False
+        #     with gui.sub_window("debug", x, 1.0 - y, 0.2, 0.5):
+        #         i = int(x * 1200)
+        #         j = int(y * 600)
+        #         gui.text(f"{x:0.2f}, {y:0.2f}, {i}, {j}")
+        #         n_levels = renderer.n_levels if maxmipmap else 1
+        #         counter, l, h, step = renderer.maxmipmap_debug(
+        #             i, j, zoom, azimuth, altitude, n_levels
+        #         )
+        #         gui.text(f"Height at {i}, {j}: {h:0.2f}")
+        #         gui.text(f"maxmipmap level 1: {renderer.maxmipmap[i // 2, 0 + j // 2]}")
+        #         gui.text(f"maxmipmap level 2: {renderer.maxmipmap[i // 4, 256 + j // 4]}")
+        #         gui.text(f"maxmipmap level 3: {renderer.maxmipmap[i // 8, 384 + j // 8]}")
+        #         gui.text(f"maxmipmap level 4: {renderer.maxmipmap[i // 16, 448 + j // 16]}")
+        #         gui.text(f"maxmipmap level 5: {renderer.maxmipmap[i // 32, 480 + j // 32]}")
+        #         gui.text(f"maxmipmap level 6: {renderer.maxmipmap[i // 64, 496 + j // 64]}")
+        #         gui.text(f"Number of steps: {counter}")
+        #         gui.text(f"Ray length: {l:0.2f}")
+        #         gui.text(f"Last step size: {step}")
+        # else:
+        #     auto_render = True
 
         with gui.sub_window("Camera", 0.5, 0.1, 0.5, 0.2):
             zoom = gui.slider_float("Zoom", zoom, 0.1, 10.0)
@@ -149,5 +149,5 @@ def main(n):
 
 
 if __name__ == "__main__":
-    ti.init(arch=ti.cpu)
+    ti.init(arch=ti.vulkan)
     main(n=512)
