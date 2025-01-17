@@ -64,34 +64,124 @@ class SimpleReliefMapper:
         return result, n_levels
 
     @ti.func
-    def get_propagation_length(self, x, y, z, dx, dy, maxmipmap) -> float:
+    def get_propagation_length_classic(self, x, y, z, dx, dy) -> float:
         result = 0.0
-        if not maxmipmap:
-            i = int(x // 1) - (1 if x % 1 == 0.0 and dx < 0 else 0)
-            j = int(y // 1) - (1 if y % 1 == 0.0 and dy < 0 else 0)
-            z_max = self.height_map[i, j]
-            if z >= z_max:
-                lx = (1 if x % 1 == 0 else x % 1) / abs(dx) if dx != 0.0 else np.inf
-                ly = (1 if y % 1 == 0 else y % 1) / abs(dy) if dy != 0.0 else np.inf
-                result = min(lx, ly)
-        else:
-            offset = 2**(self.n_levels - 1)
-            for inverse_level in range(self.n_levels):
-                k = inverse_level + 1
-                offset -= 2**k
-                level = self.n_levels - k
-                step = int(2**level)
+        i = int(x // 1) - (1 if x % 1 == 0.0 and dx < 0 else 0)
+        j = int(y // 1) - (1 if y % 1 == 0.0 and dy < 0 else 0)
+        z_max = self.height_map[i, j]
+        if z >= z_max:
+            lx = (1 if x % 1 == 0 else x % 1) / abs(dx) if dx != 0.0 else np.inf
+            ly = (1 if y % 1 == 0 else y % 1) / abs(dy) if dy != 0.0 else np.inf
+            result = min(lx, ly)
+        return result
 
+
+    @ti.func
+    def get_propagation_length(self, x, y, z, dx, dy, max_levels):
+        result = 0.0
+        step = 0.0
+        offset = 0
+        for level in range(max_levels + 1):
+            step = 2**level
+            i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)  # the bug should be in here somewhere
+            j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)  # the bug should be in here somewhere
+            z_max = self.height_map[i, j] if level == 0 else self.maxmipmap[i, offset + j]
+            if z < z_max:
+                step = step // 2
+                break
+            k = self.n_levels - level
+            offset += 2**k if level > 0 else 0
+
+        if step >= 1:
+            i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
+            j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
+            # print(i * step, x, (i + 1) * step)
+            # print(j * step, y, (j + 1) * step)
+            l_left = self.length_to_boundary(x, i * step, dx)
+            l_right = self.length_to_boundary(x, (i + 1) * step, dx)
+            l_top = self.length_to_boundary(y, j * step, dy)
+            l_bottom = self.length_to_boundary(y, (j + 1) * step, dy)
+            result = min(l_left, l_right, l_top, l_bottom)
+
+            # lx = (step if x % step == 0.0 else x % step) / abs(dx) if dx != 0.0 else np.inf
+            # ly = (step if y % step == 0.0 else y % step) / abs(dy) if dy != 0.0 else np.inf
+            # result = min(lx, ly)
+
+        return result
+
+    @ti.func
+    def length_to_boundary(self, x, x_boundary, dx):
+        result = (x_boundary - x) / dx if dx != 0 else np.inf
+        result = result if result > 0 else np.inf
+        return result
+
+    @ti.kernel
+    def maxmipmap_debug(
+            self, i_: int, j_: int, zoom: float, azimuth: float, altitude: float, n_levels: int
+    ) -> tuple[int, float, float, float]:
+        l = 0.0
+        x_ = i_ + 0.5
+        y_ = j_ + 0.5
+        x = self.x_offset + x_ / zoom
+        y = self.y_offset + y_ / zoom
+        z = self.height_map[int(x), int(y)]
+        h = z
+        dx, dy, dz = self.get_direction(azimuth, altitude, sun_width=0.0)
+        counter = 0
+        dl = 0.0
+        i, j = 0, 0
+        while True:
+            counter += 1
+            dl = 0.0
+
+            # first, get step size
+            step = 0.0
+            offset = 0
+            for level in range(n_levels + 1):
+                step = 2 ** level
                 i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
                 j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
                 z_max = self.height_map[i, j] if level == 0 else self.maxmipmap[i, offset + j]
-                if z >= z_max:
-                    lx = (step if x % step == 0 else x % step) / abs(dx) if dx != 0.0 else np.inf
-                    ly = (step if y % step == 0 else y % step) / abs(dy) if dy != 0.0 else np.inf
-                    result = min(lx, ly)
+                if z < z_max:
+                    step = step // 2
                     break
+                k = self.n_levels - level
+                offset += 2 ** k if level > 0 else 0
 
-        return result
+            # using step size, determine propagation length
+            if step >= 1:
+                i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
+                j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
+                # print(i * step, x, (i + 1) * step)
+                # print(j * step, y, (j + 1) * step)
+                l_left = self.length_to_boundary(x, i * step, dx)
+                l_right = self.length_to_boundary(x, (i + 1) * step, dx)
+                l_top = self.length_to_boundary(y, j * step, dy)
+                l_bottom = self.length_to_boundary(y, (j + 1) * step, dy)
+                dl = min(l_left, l_right, l_top, l_bottom)
+
+                # #####
+                # lx = (step if x % step == 0.0 else x % step) / abs(dx) if dx != 0.0 else np.inf  # 19.966
+                # ly = (step if y % step == 0.0 else y % step) / abs(dy) if dy != 0.0 else np.inf  # 26.143
+                # dl = min(lx, ly)
+
+            if i_ == 233 and j_ == 263:
+                print(
+                    f"i={i_:03d}, j={j_:03d}, x={x:03.3f}, y={y:03.3f}, z={z:03.3f}, "
+                    f"dx={dx:03.3f}, dy={dy:03.3f}, dz={dz:03.3f}, counter={counter:03d}, "
+                    f"step={step:03.3f}, dl={dl:03.3f}"
+                )
+
+            if dl == 0.0 or z + dl * dz * self.cell_size > self.max_value:
+                break
+
+            l += dl
+            x += dl * dx
+            y += dl * dy
+            z += dl * dz * self.cell_size
+            if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or counter > 1000:
+                break
+        return counter, l, h, dl
 
     @ti.func
     def collide(
@@ -114,17 +204,32 @@ class SimpleReliefMapper:
         y_ = j + dy_
         x = self.x_offset + x_ / zoom
         y = self.y_offset + y_ / zoom
-        if 0 <= x <= self.w and 0 <= y <= self.h:
+        if 0 <= x < self.w and 0 <= y < self.h:
             z = self.height_map[int(x), int(y)]
             c = self.map_color[int(x), int(y)]
-            while True:
-                if z >= self.max_value:
-                    result = c
-                    break
-                else:
-                    dl = self.get_propagation_length(x, y, z, dx, dy, maxmipmap)
+            if not maxmipmap:
+                while True:
+                    if z >= self.max_value:
+                        result = c
+                        break
+                    else:
+                        dl = self.get_propagation_length(x, y, z, dx, dy, max_levels=0)
+                        if dl == 0.0:
+                            break
+                        l += dl
+                        x += dl * dx
+                        y += dl * dy
+                        z += dl * dz * self.cell_size
+
+                        if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or l >= l_max:
+                            result = c
+                            break
+            else:
+                while True:
+                    dl = self.get_propagation_length(x, y, z, dx, dy, max_levels=self.n_levels)
                     if dl == 0.0:
                         break
+
                     l += dl
                     x += dl * dx
                     y += dl * dy
