@@ -36,7 +36,6 @@ class SimpleReliefMapper:
 
         # if the log is not an integer, we round up - this is the number of levels
         n_levels = int(max_log) + (1 if max_log != int(max_log) else 0)
-        # print(n_levels)
 
         # Then, calculate the dimension parameter of the mipmap.
         dim = int(2**n_levels)
@@ -81,10 +80,11 @@ class SimpleReliefMapper:
         result = 0.0
         step = 0.0
         offset = 0
+
         for level in range(max_levels + 1):
             step = 2**level
-            i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)  # the bug should be in here somewhere
-            j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)  # the bug should be in here somewhere
+            i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
+            j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
             z_max = self.height_map[i, j] if level == 0 else self.maxmipmap[i, offset + j]
             if z < z_max:
                 step = step // 2
@@ -95,17 +95,11 @@ class SimpleReliefMapper:
         if step >= 1:
             i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
             j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
-            # print(i * step, x, (i + 1) * step)
-            # print(j * step, y, (j + 1) * step)
             l_left = self.length_to_boundary(x, i * step, dx)
             l_right = self.length_to_boundary(x, (i + 1) * step, dx)
             l_top = self.length_to_boundary(y, j * step, dy)
             l_bottom = self.length_to_boundary(y, (j + 1) * step, dy)
             result = min(l_left, l_right, l_top, l_bottom)
-
-            # lx = (step if x % step == 0.0 else x % step) / abs(dx) if dx != 0.0 else np.inf
-            # ly = (step if y % step == 0.0 else y % step) / abs(dy) if dy != 0.0 else np.inf
-            # result = min(lx, ly)
 
         return result
 
@@ -114,74 +108,6 @@ class SimpleReliefMapper:
         result = (x_boundary - x) / dx if dx != 0 else np.inf
         result = result if result > 0 else np.inf
         return result
-
-    @ti.kernel
-    def maxmipmap_debug(
-            self, i_: int, j_: int, zoom: float, azimuth: float, altitude: float, n_levels: int
-    ) -> tuple[int, float, float, float]:
-        l = 0.0
-        x_ = i_ + 0.5
-        y_ = j_ + 0.5
-        x = self.x_offset + x_ / zoom
-        y = self.y_offset + y_ / zoom
-        z = self.height_map[int(x), int(y)]
-        h = z
-        dx, dy, dz = self.get_direction(azimuth, altitude, sun_width=0.0)
-        counter = 0
-        dl = 0.0
-        i, j = 0, 0
-        while True:
-            counter += 1
-            dl = 0.0
-
-            # first, get step size
-            step = 0.0
-            offset = 0
-            for level in range(n_levels + 1):
-                step = 2 ** level
-                i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
-                j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
-                z_max = self.height_map[i, j] if level == 0 else self.maxmipmap[i, offset + j]
-                if z < z_max:
-                    step = step // 2
-                    break
-                k = self.n_levels - level
-                offset += 2 ** k if level > 0 else 0
-
-            # using step size, determine propagation length
-            if step >= 1:
-                i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
-                j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
-                # print(i * step, x, (i + 1) * step)
-                # print(j * step, y, (j + 1) * step)
-                l_left = self.length_to_boundary(x, i * step, dx)
-                l_right = self.length_to_boundary(x, (i + 1) * step, dx)
-                l_top = self.length_to_boundary(y, j * step, dy)
-                l_bottom = self.length_to_boundary(y, (j + 1) * step, dy)
-                dl = min(l_left, l_right, l_top, l_bottom)
-
-                # #####
-                # lx = (step if x % step == 0.0 else x % step) / abs(dx) if dx != 0.0 else np.inf  # 19.966
-                # ly = (step if y % step == 0.0 else y % step) / abs(dy) if dy != 0.0 else np.inf  # 26.143
-                # dl = min(lx, ly)
-
-            if i_ == 233 and j_ == 263:
-                print(
-                    f"i={i_:03d}, j={j_:03d}, x={x:03.3f}, y={y:03.3f}, z={z:03.3f}, "
-                    f"dx={dx:03.3f}, dy={dy:03.3f}, dz={dz:03.3f}, counter={counter:03d}, "
-                    f"step={step:03.3f}, dl={dl:03.3f}"
-                )
-
-            if dl == 0.0 or z + dl * dz * self.cell_size > self.max_value:
-                break
-
-            l += dl
-            x += dl * dx
-            y += dl * dy
-            z += dl * dz * self.cell_size
-            if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or counter > 1000:
-                break
-        return counter, l, h, dl
 
     @ti.func
     def collide(
@@ -255,16 +181,52 @@ class SimpleReliefMapper:
             l_max: float,
             random_xy: bool,
     ):
+        """
+        Main rendering function. This is a very basic
+        ray tracing algorithm that either finds a light source
+        or not for each pixel. There is no path tracing.
+
+        Per pixel we try to collect light from two sources:
+        the sun and the sky. We do this by sending
+        rays out from each pixel. Because we only look
+        at the map top-down, we can start each ray from
+        the surface of the map directly.
+
+        For each light source we get a ray direction which
+        is then fed into the `collide` function. If the function
+        finds a clear line to the source, it returns the map
+        color; otherwise black. This map color is then multiplied
+        by the light source color.
+
+        :param azimuth: Sun azimuth (degrees)
+        :param altitude: Sun altitude above horizon (degrees)
+        :param maxmipmap: boolean flag. if True, the algorithm
+            uses MaxMipMap to accelerate the ray through unobstructed
+            sections of the map.
+        :param zoom: zoom factor. 1.0 = normal.
+        :param spp: samples per pixel. For spp=1, each light source is sampled once.
+        :param sun_width: width of Sun in degrees. This determines
+            how wide the Sun is sampled. TODO: rename to radius
+            0.0 = infinitely distant point source
+            5.0 = a square Sun width width 10 and height 10
+        :param sun_color: color of the Sun
+        :param sky_color: color of the Sky
+        :param l_max: maximum ray length. a shorter length should reduce
+            calculation time at the expense of long shadows
+        :param random_xy: boolean flag. If True, the starting point within
+            the pixel is sampled randomly. If False, we take the pixel midpoint.
+        :return: None
+        """
         for i, j in self.pixels:
             self.pixels[i, j] = ti.Vector([0.0, 0.0, 0.0])
             for _ in range(spp):
-                # trace path to sun
+                # trace ray to sun
                 dx, dy, dz = self.get_direction(azimuth, altitude, sun_width)
                 self.pixels[i, j] += sun_color * self.collide(
                     i, j, dx, dy, dz, maxmipmap, zoom, l_max, random_xy
                 ) / spp / 2
 
-                # trace path to sky
+                # trace ray to sky
                 az = ti.random(float) * 360.0
                 al = ti.asin(ti.random(float)) * 90.0
                 dx, dy, dz = self.get_direction(az, al, 0.0)
