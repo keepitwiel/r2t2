@@ -62,18 +62,6 @@ class SimpleReliefMapper:
         result.from_numpy(maxmipmap)
         return result, n_levels
 
-    @ti.func
-    def get_propagation_length_classic(self, x, y, z, dx, dy) -> float:
-        result = 0.0
-        i = int(x // 1) - (1 if x % 1 == 0.0 and dx < 0 else 0)
-        j = int(y // 1) - (1 if y % 1 == 0.0 and dy < 0 else 0)
-        z_max = self.height_map[i, j]
-        if z >= z_max:
-            lx = (1 if x % 1 == 0 else x % 1) / abs(dx) if dx != 0.0 else np.inf
-            ly = (1 if y % 1 == 0 else y % 1) / abs(dy) if dy != 0.0 else np.inf
-            result = min(lx, ly)
-        return result
-
 
     @ti.func
     def get_propagation_length(self, x, y, z, dx, dy, max_levels):
@@ -83,8 +71,8 @@ class SimpleReliefMapper:
 
         for level in range(max_levels + 1):
             step = 2**level
-            i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
-            j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
+            i = self.get_hierarchical_index(x, dx, step)  # int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
+            j = self.get_hierarchical_index(y, dy, step)  # int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
             z_max = self.height_map[i, j] if level == 0 else self.maxmipmap[i, offset + j]
             if z < z_max:
                 step = step // 2
@@ -93,8 +81,8 @@ class SimpleReliefMapper:
             offset += 2**k if level > 0 else 0
 
         if step >= 1:
-            i = int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
-            j = int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
+            i = self.get_hierarchical_index(x, dx, step)  # int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
+            j = self.get_hierarchical_index(y, dy, step)  # int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
             l_left = self.length_to_boundary(x, i * step, dx)
             l_right = self.length_to_boundary(x, (i + 1) * step, dx)
             l_top = self.length_to_boundary(y, j * step, dy)
@@ -104,9 +92,15 @@ class SimpleReliefMapper:
         return result
 
     @ti.func
+    def get_hierarchical_index(self, x, dx, step):
+        return int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
+
+    @ti.func
     def length_to_boundary(self, x, x_boundary, dx):
-        result = (x_boundary - x) / dx if dx != 0 else np.inf
-        result = result if result > 0 else np.inf
+        result = np.inf
+        if dx != 0:
+            result = (x_boundary - x) / dx
+            result = result if result > 0 else np.inf
         return result
 
     @ti.func
@@ -117,12 +111,11 @@ class SimpleReliefMapper:
         dx: float,
         dy: float,
         dz: float,
-        maxmipmap: bool,
         zoom: float,
         l_max: float,
         random_xy: bool,
     ):
-        l = 0.0
+        t = 0.0
         result = ti.Vector([0.0, 0.0, 0.0])
         dx_ = ti.random(dtype=float) if random_xy else 0.5
         dy_ = ti.random(dtype=float) if random_xy else 0.5
@@ -133,37 +126,17 @@ class SimpleReliefMapper:
         if 0 <= x < self.w and 0 <= y < self.h:
             z = self.height_map[int(x), int(y)]
             c = self.map_color[int(x), int(y)]
-            if not maxmipmap:
-                while True:
-                    if z >= self.max_value:
-                        result = c
-                        break
-                    else:
-                        dl = self.get_propagation_length(x, y, z, dx, dy, max_levels=0)
-                        if dl == 0.0:
-                            break
-                        l += dl
-                        x += dl * dx
-                        y += dl * dy
-                        z += dl * dz * self.cell_size
-
-                        if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or l >= l_max:
-                            result = c
-                            break
-            else:
-                while True:
-                    dl = self.get_propagation_length(x, y, z, dx, dy, max_levels=self.n_levels)
-                    if dl == 0.0:
-                        break
-
-                    l += dl
-                    x += dl * dx
-                    y += dl * dy
-                    z += dl * dz * self.cell_size
-
-                    if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or l >= l_max:
-                        result = c
-                        break
+            while True:
+                dt = self.get_propagation_length(x, y, z, dx, dy, max_levels=self.n_levels)
+                if dt == 0.0:
+                    break
+                t += dt
+                x += dt * dx
+                y += dt * dy
+                z += dt * dz * self.cell_size
+                if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or t >= l_max:
+                    result = c
+                    break
 
         return result
 
@@ -172,7 +145,6 @@ class SimpleReliefMapper:
             self,
             azimuth: float,
             altitude: float,
-            maxmipmap: bool,
             zoom: float,
             spp: int,
             sun_width: float,
@@ -200,9 +172,6 @@ class SimpleReliefMapper:
 
         :param azimuth: Sun azimuth (degrees)
         :param altitude: Sun altitude above horizon (degrees)
-        :param maxmipmap: boolean flag. if True, the algorithm
-            uses MaxMipMap to accelerate the ray through unobstructed
-            sections of the map.
         :param zoom: zoom factor. 1.0 = normal.
         :param spp: samples per pixel. For spp=1, each light source is sampled once.
         :param sun_width: width of Sun in degrees. This determines
@@ -223,7 +192,7 @@ class SimpleReliefMapper:
                 # trace ray to sun
                 dx, dy, dz = self.get_direction(azimuth, altitude, sun_width)
                 self.pixels[i, j] += sun_color * self.collide(
-                    i, j, dx, dy, dz, maxmipmap, zoom, l_max, random_xy
+                    i, j, dx, dy, dz, zoom, l_max, random_xy
                 ) / spp / 2
 
                 # trace ray to sky
@@ -231,14 +200,11 @@ class SimpleReliefMapper:
                 al = ti.asin(ti.random(float)) * 90.0
                 dx, dy, dz = self.get_direction(az, al, 0.0)
                 self.pixels[i, j] += sky_color * self.collide(
-                    i, j, dx, dy, dz, maxmipmap, zoom, l_max, random_xy
+                    i, j, dx, dy, dz, zoom, l_max, random_xy
                 ) / spp / 2
 
             # gamma correction
             self.pixels[i, j] = self.pixels[i, j] ** (1.0/2.2)
-
-    def get_shape(self) -> tuple[int]:
-        return self.pixels.shape
 
     def get_image(self):
         return self.pixels.to_numpy().astype(np.float32)
