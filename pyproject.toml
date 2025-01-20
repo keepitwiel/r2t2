@@ -1,0 +1,4 @@
+[project]
+name = "r2t2"
+description = "A simple, fast, top-down Ray Tracing Terrain Renderer (R2T2)"
+version = 0.0
