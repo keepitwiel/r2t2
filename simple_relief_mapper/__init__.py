@@ -1,2 +1,0 @@
-from .simple_relief_mapper import SimpleReliefMapper
-from .height import simplex_height_map

@@ -1,11 +1,11 @@
 import taichi as ti
 import numpy as np
 
-from simple_relief_mapper import SimpleReliefMapper
-from simple_relief_mapper import simplex_height_map
+from r2t2 import Renderer
+from height import simplex_height_map
 
 
-def run(renderer: SimpleReliefMapper):
+def run(renderer: Renderer):
     window = ti.ui.Window(name='Example 1', res=(1200, 600), fps_limit=60, pos=(0, 0))
     gui = window.get_gui()
     canvas = window.get_canvas()
@@ -13,8 +13,10 @@ def run(renderer: SimpleReliefMapper):
 
     # camera
     zoom = 1.0
+    x_offset = 0.0
+    y_offset = 0.0
     show_maxmipmap = False
-    spp = 1
+    spp = 4
 
     # algorithm
     l_max_max = 2**renderer.n_levels
@@ -25,39 +27,42 @@ def run(renderer: SimpleReliefMapper):
     azimuth = 300.0 # light source horizontal direction, degrees
     azimuth_speed = 0.0 # degrees per render
     altitude = 45.0 # light source vertical direction, degrees
-    sun_width = 0.0
+    sun_radius = 10.0
     sun_color = (1.0, 0.9, 0.0)
 
     # sky
     sky_color = (0.2, 0.2, 1.0)
 
-    auto_render = True
     while window.running:
-        with gui.sub_window("Camera", 0.5, 0.1, 0.5, 0.2):
+        with gui.sub_window("Camera", 0.5, 0.1, width=0.4, height=0.2):
             zoom = gui.slider_float("Zoom", zoom, 0.1, 10.0)
+            x_offset = gui.slider_float("X offset", x_offset, -renderer.w, renderer.w)
+            y_offset = gui.slider_float("Y offset", y_offset, -renderer.h, renderer.h)
             show_maxmipmap = gui.checkbox("Show MaxMipMap", show_maxmipmap)
             spp = gui.slider_int("Samples per pixel", spp, 1, 16)
 
-        with gui.sub_window("Algorithm", 0.5, 0.3, 0.5, 0.2):
+        with gui.sub_window("Algorithm", 0.5, 0.3, width=0.4, height=0.15):
             l_max = gui.slider_float("Maximum ray length", l_max, 0.0, l_max_max)
             random_xy = gui.checkbox("Randomize ray spawn point within pixel", random_xy)
 
-        with gui.sub_window("Sun", 0.5, 0.5, 0.5, 0.2):
+        with gui.sub_window("Sun", 0.5, 0.5, width=0.4, height=0.25):
             azimuth = gui.slider_float(f"Azimuth (degrees)", azimuth, 0, 360)
             azimuth_speed = gui.slider_float(f"Azimuth rotation speed (degrees)", azimuth_speed, -5, 5)
             altitude = gui.slider_float("Altitude (degrees)", altitude, 0, 90)
-            sun_width = gui.slider_float("Sun width (degrees)", sun_width, 0.0, 5.0)
+            sun_radius = gui.slider_float("Sun radius (degrees)", sun_radius, 0.0, 5.0)
             sun_color = gui.color_edit_3("Color", sun_color)
 
-        with gui.sub_window("Sky", 0.5, 0.7, 0.5, 0.2):
+        with gui.sub_window("Sky", 0.5, 0.8, width=0.4, height=0.1):
             sky_color = gui.color_edit_3("Color", sky_color)
 
         renderer.render(
             azimuth,
             altitude,
             zoom,
+            x_offset,
+            y_offset,
             spp=spp,
-            sun_width=sun_width,
+            sun_radius=sun_radius,
             sun_color=sun_color,
             sky_color=sky_color,
             l_max=l_max,
@@ -68,9 +73,10 @@ def run(renderer: SimpleReliefMapper):
         azimuth = (azimuth + azimuth_speed) % 360
 
         if show_maxmipmap:
-            out_image[:renderer.w // 2, :renderer.w - 1, 0] = renderer.maxmipmap.to_numpy().astype(np.float32)
-            out_image[:renderer.w // 2, :renderer.w - 1, 1] = renderer.maxmipmap.to_numpy().astype(np.float32)
-            out_image[:renderer.w // 2, :renderer.w - 1, 2] = renderer.maxmipmap.to_numpy().astype(np.float32)
+            mmm = renderer.maxmipmap.to_numpy().astype(np.float32)
+            out_image[:renderer.w // 2, :renderer.w - 1, 0] = mmm
+            out_image[:renderer.w // 2, :renderer.w - 1, 1] = mmm
+            out_image[:renderer.w // 2, :renderer.w - 1, 2] = mmm
             canvas.set_image((out_image - np.float32(renderer.min_value)) / np.float32(renderer.max_value - renderer.min_value))
         else:
             out_image[:renderer.w, :renderer.h] = renderer.get_image()
@@ -107,13 +113,8 @@ def example_map_1(n):
 
 
 def main(n):
-    # define height map
     z, c = example_map_1(n)
-
-    # initialize renderer
-    renderer = SimpleReliefMapper(height_map=z, map_color=c, cell_size=1.0)
-
-    # run app
+    renderer = Renderer(height_map=z, map_color=c)
     run(renderer)
 
 

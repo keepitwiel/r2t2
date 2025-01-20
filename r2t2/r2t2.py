@@ -3,11 +3,9 @@ import numpy as np
 
 
 @ti.data_oriented
-class SimpleReliefMapper:
-    def __init__(self, height_map: np.ndarray, map_color: np.ndarray = None, cell_size=1.0):
+class Renderer:
+    def __init__(self, height_map: np.ndarray, map_color: np.ndarray = None):
         self.w, self.h = height_map.shape
-        self.x_offset = 0.0
-        self.y_offset = 0.0
         self.height_map = ti.field(dtype=float, shape=(self.w, self.h))
         self.height_map.from_numpy(height_map)
         self.max_value = np.max(height_map)
@@ -18,7 +16,6 @@ class SimpleReliefMapper:
         else:
             self.map_color.fill(ti.Vector([1.0, 1.0, 1.0]))
         self.pixels = ti.Vector.field(n=3, dtype=float, shape=(self.w, self.h))
-        self.cell_size = cell_size
         self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
         pass
 
@@ -71,8 +68,8 @@ class SimpleReliefMapper:
 
         for level in range(max_levels + 1):
             step = 2**level
-            i = self.get_hierarchical_index(x, dx, step)  # int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
-            j = self.get_hierarchical_index(y, dy, step)  # int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
+            i = self.get_hierarchical_index(x, dx, step)
+            j = self.get_hierarchical_index(y, dy, step)
             z_max = self.height_map[i, j] if level == 0 else self.maxmipmap[i, offset + j]
             if z < z_max:
                 step = step // 2
@@ -81,8 +78,8 @@ class SimpleReliefMapper:
             offset += 2**k if level > 0 else 0
 
         if step >= 1:
-            i = self.get_hierarchical_index(x, dx, step)  # int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
-            j = self.get_hierarchical_index(y, dy, step)  # int(y // step) - (1 if y % step == 0.0 and dy < 0 else 0)
+            i = self.get_hierarchical_index(x, dx, step)
+            j = self.get_hierarchical_index(y, dy, step)
             l_left = self.length_to_boundary(x, i * step, dx)
             l_right = self.length_to_boundary(x, (i + 1) * step, dx)
             l_top = self.length_to_boundary(y, j * step, dy)
@@ -108,6 +105,8 @@ class SimpleReliefMapper:
         self,
         i: int,
         j: int,
+        x_offset: float,
+        y_offset: float,
         dx: float,
         dy: float,
         dz: float,
@@ -121,8 +120,8 @@ class SimpleReliefMapper:
         dy_ = ti.random(dtype=float) if random_xy else 0.5
         x_ = i + dx_
         y_ = j + dy_
-        x = self.x_offset + x_ / zoom
-        y = self.y_offset + y_ / zoom
+        x = x_offset + x_ / zoom
+        y = y_offset + y_ / zoom
         if 0 <= x < self.w and 0 <= y < self.h:
             z = self.height_map[int(x), int(y)]
             c = self.map_color[int(x), int(y)]
@@ -133,8 +132,8 @@ class SimpleReliefMapper:
                 t += dt
                 x += dt * dx
                 y += dt * dy
-                z += dt * dz * self.cell_size
-                if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or t >= l_max:
+                z += dt * dz
+                if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or z >= self.max_value or t >= l_max:
                     result = c
                     break
 
@@ -146,8 +145,10 @@ class SimpleReliefMapper:
             azimuth: float,
             altitude: float,
             zoom: float,
+            x_offset: float,
+            y_offset: float,
             spp: int,
-            sun_width: float,
+            sun_radius: float,
             sun_color: ti.math.vec3,
             sky_color: ti.math.vec3,
             l_max: float,
@@ -173,11 +174,13 @@ class SimpleReliefMapper:
         :param azimuth: Sun azimuth (degrees)
         :param altitude: Sun altitude above horizon (degrees)
         :param zoom: zoom factor. 1.0 = normal.
+        :param x_offset: horizontal camera offset
+        :param y_offset: vertical camera offset
         :param spp: samples per pixel. For spp=1, each light source is sampled once.
-        :param sun_width: width of Sun in degrees. This determines
-            how wide the Sun is sampled. TODO: rename to radius
+        :param sun_radius: radius of Sun in degrees. This determines
+            how wide the Sun is sampled.
             0.0 = infinitely distant point source
-            5.0 = a square Sun width width 10 and height 10
+            5.0 = a square Sun with width and height = 2 * sun_radius
         :param sun_color: color of the Sun
         :param sky_color: color of the Sky
         :param l_max: maximum ray length. a shorter length should reduce
@@ -190,9 +193,9 @@ class SimpleReliefMapper:
             self.pixels[i, j] = ti.Vector([0.0, 0.0, 0.0])
             for _ in range(spp):
                 # trace ray to sun
-                dx, dy, dz = self.get_direction(azimuth, altitude, sun_width)
+                dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
                 self.pixels[i, j] += sun_color * self.collide(
-                    i, j, dx, dy, dz, zoom, l_max, random_xy
+                    i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
                 ) / spp / 2
 
                 # trace ray to sky
@@ -200,7 +203,7 @@ class SimpleReliefMapper:
                 al = ti.asin(ti.random(float)) * 90.0
                 dx, dy, dz = self.get_direction(az, al, 0.0)
                 self.pixels[i, j] += sky_color * self.collide(
-                    i, j, dx, dy, dz, zoom, l_max, random_xy
+                    i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
                 ) / spp / 2
 
             # gamma correction
@@ -211,9 +214,9 @@ class SimpleReliefMapper:
 
     @staticmethod
     @ti.func
-    def get_direction(azimuth, altitude, sun_width):
-        u = sun_width * (ti.random(float) - 0.5)
-        v = sun_width * (ti.random(float) - 0.5)
+    def get_direction(azimuth, altitude, sun_radius):
+        u = sun_radius * (ti.random(float) - 0.5)
+        v = sun_radius * (ti.random(float) - 0.5)
         azi_rad = (azimuth + u) * np.pi / 180
         alt_rad = (altitude + v) * np.pi / 180
         dx = ti.cos(alt_rad) * ti.cos(azi_rad)

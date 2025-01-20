@@ -3,12 +3,12 @@ import numpy as np
 from scipy.datasets import face
 import cv2
 
-from simple_relief_mapper import SimpleReliefMapper
+from r2t2 import Renderer
 
 
 def main():
     height_map = face(gray=True)[::2, ::2]
-    renderer = SimpleReliefMapper(height_map)
+    renderer = Renderer(height_map)
     mipmap = renderer.maxmipmap.to_numpy().astype(np.uint8)
 
     print("level 0")
