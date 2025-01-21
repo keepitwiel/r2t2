@@ -2,22 +2,31 @@ import taichi as ti
 import numpy as np
 
 
+BLACK = ti.Vector([0.0, 0.0, 0.0])
+
+
 @ti.data_oriented
 class Renderer:
-    def __init__(self, height_map: np.ndarray, map_color: np.ndarray = None):
-        self.w, self.h = height_map.shape
-        self.height_map = ti.field(dtype=float, shape=(self.w, self.h))
+    def __init__(
+        self,
+        height_map: np.ndarray,
+        map_color: np.ndarray = None,
+        canvas_shape: tuple[int, int] = (800, 600),
+    ):
+        self.w_map, self.h_map = height_map.shape
+        self.w_canvas, self.h_canvas = canvas_shape
+        self.height_map = ti.field(dtype=float, shape=(self.w_map, self.h_map))
         self.height_map.from_numpy(height_map)
         self.max_value = np.max(height_map)
         self.min_value = np.min(height_map)
-        self.map_color = ti.Vector.field(n=3, dtype=float, shape=(self.w, self.h))
+        self.map_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
         if map_color is not None:
             self.map_color.from_numpy(map_color)
         else:
             self.map_color.fill(ti.Vector([1.0, 1.0, 1.0]))
-        self.pixels = ti.Vector.field(n=3, dtype=float, shape=(self.w, self.h))
+        self.pixels = ti.Vector.field(n=3, dtype=float, shape=(self.w_canvas, self.h_canvas))
         self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
-        pass
+
 
     def initialize_maxmipmap(self):
         # calculate maximum mipmap using the height map as source image.
@@ -26,7 +35,7 @@ class Renderer:
         # 2**n (n integer), we force it to be 2**n for convenience purposes.
         #
         # First, calculate the maximum between the log of width and height.
-        w, h = self.w, self.h
+        w, h = self.w_map, self.h_map
         log_w = np.log2(w)
         log_h = np.log2(h)
         max_log = max(log_w, log_h)
@@ -122,7 +131,7 @@ class Renderer:
         y_ = j + dy_
         x = x_offset + x_ / zoom
         y = y_offset + y_ / zoom
-        if 0 <= x < self.w and 0 <= y < self.h:
+        if 0 <= x < self.w_map and 0 <= y < self.h_map:
             z = self.height_map[int(x), int(y)]
             c = self.map_color[int(x), int(y)]
             while True:
@@ -133,7 +142,7 @@ class Renderer:
                 x += dt * dx
                 y += dt * dy
                 z += dt * dz
-                if x <= 0.0 or x >= self.w or y <= 0.0 or y >= self.h or z >= self.max_value or t >= l_max:
+                if x <= 0.0 or x >= self.w_map or y <= 0.0 or y >= self.h_map or z >= self.max_value or t >= l_max:
                     result = c
                     break
 
@@ -190,15 +199,15 @@ class Renderer:
         :return: None
         """
         for i, j in self.pixels:
-            self.pixels[i, j] = ti.Vector([0.0, 0.0, 0.0])
+            self.pixels[i, j] = BLACK
             for _ in range(spp):
-                # trace ray to sun
+                # trace ray to sun. TODO: get x, y first, then determine if its on map, then collide
                 dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
                 self.pixels[i, j] += sun_color * self.collide(
                     i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
                 ) / spp / 2
 
-                # trace ray to sky
+                # trace ray to sky. TODO: get x, y first, then determine if its on map, then collide
                 az = ti.random(float) * 360.0
                 al = ti.asin(ti.random(float)) * 90.0
                 dx, dy, dz = self.get_direction(az, al, 0.0)

@@ -25,9 +25,9 @@ def run(renderer: Renderer):
 
     # sun
     azimuth = 300.0 # light source horizontal direction, degrees
-    azimuth_speed = 0.0 # degrees per render
+    azimuth_speed = 0.5 # degrees per render
     altitude = 45.0 # light source vertical direction, degrees
-    sun_radius = 10.0
+    sun_radius = 5.0
     sun_color = (1.0, 0.9, 0.0)
 
     # sky
@@ -36,8 +36,8 @@ def run(renderer: Renderer):
     while window.running:
         with gui.sub_window("Camera", 0.5, 0.1, width=0.4, height=0.2):
             zoom = gui.slider_float("Zoom", zoom, 0.1, 10.0)
-            x_offset = gui.slider_float("X offset", x_offset, -renderer.w, renderer.w)
-            y_offset = gui.slider_float("Y offset", y_offset, -renderer.h, renderer.h)
+            x_offset = gui.slider_float("X offset", x_offset, -renderer.w_map, renderer.w_map)
+            y_offset = gui.slider_float("Y offset", y_offset, -renderer.h_map, renderer.h_map)
             show_maxmipmap = gui.checkbox("Show MaxMipMap", show_maxmipmap)
             spp = gui.slider_int("Samples per pixel", spp, 1, 16)
 
@@ -74,12 +74,12 @@ def run(renderer: Renderer):
 
         if show_maxmipmap:
             mmm = renderer.maxmipmap.to_numpy().astype(np.float32)
-            out_image[:renderer.w // 2, :renderer.w - 1, 0] = mmm
-            out_image[:renderer.w // 2, :renderer.w - 1, 1] = mmm
-            out_image[:renderer.w // 2, :renderer.w - 1, 2] = mmm
+            out_image[:renderer.w_map // 2, :renderer.w_map - 1, 0] = mmm
+            out_image[:renderer.w_map // 2, :renderer.w_map - 1, 1] = mmm
+            out_image[:renderer.w_map // 2, :renderer.w_map - 1, 2] = mmm
             canvas.set_image((out_image - np.float32(renderer.min_value)) / np.float32(renderer.max_value - renderer.min_value))
         else:
-            out_image[:renderer.w, :renderer.h] = renderer.get_image()
+            out_image[:renderer.w_canvas, :renderer.h_canvas] = renderer.get_image()
             canvas.set_image(out_image)
         window.show()
 
