@@ -6,7 +6,7 @@ BLACK = ti.Vector([0.0, 0.0, 0.0])
 
 
 @ti.data_oriented
-class Renderer:
+class BaseRenderer:
     def __init__(
         self,
         height_map: np.ndarray,
@@ -149,26 +149,31 @@ class Renderer:
         return result
 
     @ti.kernel
-    def render(
-            self,
-            azimuth: float,
-            altitude: float,
-            zoom: float,
-            x_offset: float,
-            y_offset: float,
-            spp: int,
-            sun_radius: float,
-            sun_color: ti.math.vec3,
-            sky_color: ti.math.vec3,
-            l_max: float,
-            random_xy: bool,
+    def render_internal(
+        self,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        azimuth: float,
+        altitude: float,
+        zoom: float,
+        x_offset: float,
+        y_offset: float,
+        spp: int,
+        sun_radius: float,
+        sun_color: ti.math.vec3,
+        sky_color: ti.math.vec3,
+        l_max: float,
+        random_xy: bool,
     ):
         """
         Main rendering function. This is a very basic
         ray tracing algorithm that either finds a light source
         or not for each pixel. There is no path tracing.
 
-        Per pixel we try to collect light from two sources:
+        Per pixel (that is inside bounding box (x, y, w, h)
+        we try to collect light from two sources:
         the sun and the sky. We do this by sending
         rays out from each pixel. Because we only look
         at the map top-down, we can start each ray from
@@ -180,6 +185,10 @@ class Renderer:
         color; otherwise black. This map color is then multiplied
         by the light source color.
 
+        :param x: lower bound of horizontal pixel range to be rendererd
+        :param y: lower bound of vertical pixel range to be rendered
+        :param w: width of pixel range to be rendered
+        :param h: height of pixel range to be rendered
         :param azimuth: Sun azimuth (degrees)
         :param altitude: Sun altitude above horizon (degrees)
         :param zoom: zoom factor. 1.0 = normal.
@@ -197,6 +206,50 @@ class Renderer:
         :param random_xy: boolean flag. If True, the starting point within
             the pixel is sampled randomly. If False, we take the pixel midpoint.
         :return: None
+        """
+        for i, j in self.pixels:
+            if x <= i < x + w and y <= j < y + w:
+                self.pixels[i, j] = BLACK
+                for _ in range(spp):
+                    # trace ray to sun. TODO: get x, y first, then determine if its on map, then collide
+                    dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
+                    self.pixels[i, j] += sun_color * self.collide(
+                        i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
+                    ) / spp / 2
+
+                    # trace ray to sky. TODO: get x, y first, then determine if its on map, then collide
+                    az = ti.random(float) * 360.0
+                    al = ti.asin(ti.random(float)) * 90.0
+                    dx, dy, dz = self.get_direction(az, al, 0.0)
+                    self.pixels[i, j] += sky_color * self.collide(
+                        i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
+                    ) / spp / 2
+
+                # gamma correction
+                self.pixels[i, j] = self.pixels[i, j] ** (1.0/2.2)
+
+    @ti.kernel
+    def render_bbox(
+        self,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        azimuth: float,
+        altitude: float,
+        zoom: float,
+        x_offset: float,
+        y_offset: float,
+        spp: int,
+        sun_radius: float,
+        sun_color: ti.math.vec3,
+        sky_color: ti.math.vec3,
+        l_max: float,
+        random_xy: bool,
+    ):
+        """
+        Same as the render_internal function, except the rendering is limited to
+        pixels within
         """
         for i, j in self.pixels:
             self.pixels[i, j] = BLACK
@@ -218,6 +271,7 @@ class Renderer:
             # gamma correction
             self.pixels[i, j] = self.pixels[i, j] ** (1.0/2.2)
 
+
     def get_image(self):
         return self.pixels.to_numpy().astype(np.float32)
 
@@ -232,3 +286,45 @@ class Renderer:
         dy = ti.cos(alt_rad) * ti.sin(azi_rad)
         dz = ti.sin(alt_rad)
         return dx, dy, dz
+
+
+class Renderer(BaseRenderer):
+    def __init__(
+        self,
+        height_map: np.ndarray,
+        map_color: np.ndarray = None,
+        canvas_shape: tuple[int, int] = (800, 600),
+    ):
+        super().__init__(height_map, map_color, canvas_shape)
+        self.azimuth: float = 45.0
+        self.altitude: float = 45.0
+        self.zoom: float = 1.0
+        self.x_offset: float = 0.0
+        self.y_offset: float = 0.0
+        self.spp: int = 1
+        self.sun_radius: float = 2.5
+        self.sun_color: tuple[float, float, float] = (1.0, 0.9, 0.0)
+        self.sky_color: tuple[float, float, float] = (0.2, 0.2, 1.0)
+        self.l_max: float = 2**self.n_levels
+        self.random_xy: bool = True
+
+    def render(self, bbox: tuple[int, int, int, int] | None = None):
+        if bbox is None:
+            bbox = [0, 0, self.w_canvas, self.h_canvas]
+        self.render_internal(
+            x=bbox[0],
+            y=bbox[1],
+            w=bbox[2],
+            h=bbox[3],
+            azimuth=self.azimuth,
+            altitude=self.altitude,
+            zoom=self.zoom,
+            x_offset=self.x_offset,
+            y_offset=self.y_offset,
+            spp=self.spp,
+            sun_radius=self.sun_radius,
+            sun_color=self.sun_color,
+            sky_color=self.sky_color,
+            l_max=self.l_max,
+            random_xy=self.random_xy,
+        )

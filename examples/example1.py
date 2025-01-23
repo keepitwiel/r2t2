@@ -12,66 +12,46 @@ def run(renderer: Renderer):
     out_image = np.zeros((1200, 600, 3), dtype=np.float32)
 
     # camera
-    zoom = 1.0
-    x_offset = 0.0
-    y_offset = 0.0
     show_maxmipmap = False
     spp = 4
 
     # algorithm
-    l_max_max = 2**renderer.n_levels
-    l_max = l_max_max
-    random_xy = True
+    l_max_max = renderer.l_max
 
     # sun
-    azimuth = 300.0 # light source horizontal direction, degrees
     azimuth_speed = 0.5 # degrees per render
-    altitude = 45.0 # light source vertical direction, degrees
-    sun_radius = 5.0
-    sun_color = (1.0, 0.9, 0.0)
-
-    # sky
-    sky_color = (0.2, 0.2, 1.0)
 
     while window.running:
+        # render the image
+        renderer.render()
+
+        # show GUIs
         with gui.sub_window("Camera", 0.5, 0.1, width=0.4, height=0.2):
-            zoom = gui.slider_float("Zoom", zoom, 0.1, 10.0)
-            x_offset = gui.slider_float("X offset", x_offset, -renderer.w_map, renderer.w_map)
-            y_offset = gui.slider_float("Y offset", y_offset, -renderer.h_map, renderer.h_map)
+            renderer.zoom = gui.slider_float("Zoom", renderer.zoom, 0.1, 10.0)
+            renderer.x_offset = gui.slider_float("X offset", renderer.x_offset, -renderer.w_map, renderer.w_map)
+            renderer.y_offset = gui.slider_float("Y offset", renderer.y_offset, -renderer.h_map, renderer.h_map)
             show_maxmipmap = gui.checkbox("Show MaxMipMap", show_maxmipmap)
-            spp = gui.slider_int("Samples per pixel", spp, 1, 16)
+            renderer.spp = gui.slider_int("Samples per pixel", renderer.spp, 1, 16)
 
         with gui.sub_window("Algorithm", 0.5, 0.3, width=0.4, height=0.15):
-            l_max = gui.slider_float("Maximum ray length", l_max, 0.0, l_max_max)
-            random_xy = gui.checkbox("Randomize ray spawn point within pixel", random_xy)
+            renderer.l_max = gui.slider_float("Maximum ray length", renderer.l_max, 0.0, l_max_max)
+            renderer.random_xy = gui.checkbox("Randomize ray spawn point within pixel", renderer.random_xy)
 
         with gui.sub_window("Sun", 0.5, 0.5, width=0.4, height=0.25):
-            azimuth = gui.slider_float(f"Azimuth (degrees)", azimuth, 0, 360)
-            azimuth_speed = gui.slider_float(f"Azimuth rotation speed (degrees)", azimuth_speed, -5, 5)
-            altitude = gui.slider_float("Altitude (degrees)", altitude, 0, 90)
-            sun_radius = gui.slider_float("Sun radius (degrees)", sun_radius, 0.0, 5.0)
-            sun_color = gui.color_edit_3("Color", sun_color)
+            renderer.azimuth = gui.slider_float(f"Azimuth (degrees)", renderer.azimuth, 0, 360)
+            azimuth_speed = gui.slider_float(f"Azimuth rotation speed (degrees per frame)", azimuth_speed, -5, 5)
+            renderer.altitude = gui.slider_float("Altitude (degrees)", renderer.altitude, 0, 90)
+            renderer.sun_radius = gui.slider_float("Sun radius (degrees)", renderer.sun_radius, 0.0, 5.0)
+            renderer.sun_color = gui.color_edit_3("Color", renderer.sun_color)
 
         with gui.sub_window("Sky", 0.5, 0.8, width=0.4, height=0.1):
-            sky_color = gui.color_edit_3("Color", sky_color)
+            renderer.sky_color = gui.color_edit_3("Color", renderer.sky_color)
 
-        renderer.render(
-            azimuth,
-            altitude,
-            zoom,
-            x_offset,
-            y_offset,
-            spp=spp,
-            sun_radius=sun_radius,
-            sun_color=sun_color,
-            sky_color=sky_color,
-            l_max=l_max,
-            random_xy=random_xy,
-        )
         # the following rotates the azimuth between 0 and 360 degrees, with increments of 1 degree per step
         # note that the speed is not adjusted by frame rate
-        azimuth = (azimuth + azimuth_speed) % 360
+        renderer.azimuth = (renderer.azimuth + azimuth_speed) % 360
 
+        # display image
         if show_maxmipmap:
             mmm = renderer.maxmipmap.to_numpy().astype(np.float32)
             out_image[:renderer.w_map // 2, :renderer.w_map - 1, 0] = mmm
