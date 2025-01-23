@@ -13,19 +13,7 @@ def main():
     renderer = Renderer(height_map)
     pbar = tqdm()
     while True:
-        renderer.render(
-            azimuth=45,
-            altitude=45,
-            zoom=1.0,
-            x_offset=0.0,
-            y_offset=0.0,
-            spp=1,
-            sun_radius=0.0,
-            sun_color=ti.Vector([1.0, 0.9, 0.0]),
-            sky_color=ti.Vector([0.2, 0.2, 1.0]),
-            l_max=max(height_map.shape),
-            random_xy=True,
-        )
+        renderer.render()
         pbar.update()
 
 
