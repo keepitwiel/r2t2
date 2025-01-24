@@ -11,7 +11,7 @@ onto a height map.
 ## Installation
 
 ```commandline
-git clone https://github.com/keepitwiel/simple-relief-mapper.git
+git clone https://github.com/keepitwiel/r2t2
 ```
 
 Open the cloned repository in PyCharm, install a virtual environment and install the required packages:
