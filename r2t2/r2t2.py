@@ -208,7 +208,7 @@ class BaseRenderer:
         :return: None
         """
         for i, j in self.pixels:
-            if x <= i < x + w and y <= j < y + w:
+            if x <= i < x + w and y <= j < y + h:
                 self.pixels[i, j] = BLACK
                 for _ in range(spp):
                     # trace ray to sun. TODO: get x, y first, then determine if its on map, then collide
@@ -227,50 +227,6 @@ class BaseRenderer:
 
                 # gamma correction
                 self.pixels[i, j] = self.pixels[i, j] ** (1.0/2.2)
-
-    @ti.kernel
-    def render_bbox(
-        self,
-        x: int,
-        y: int,
-        w: int,
-        h: int,
-        azimuth: float,
-        altitude: float,
-        zoom: float,
-        x_offset: float,
-        y_offset: float,
-        spp: int,
-        sun_radius: float,
-        sun_color: ti.math.vec3,
-        sky_color: ti.math.vec3,
-        l_max: float,
-        random_xy: bool,
-    ):
-        """
-        Same as the render_internal function, except the rendering is limited to
-        pixels within
-        """
-        for i, j in self.pixels:
-            self.pixels[i, j] = BLACK
-            for _ in range(spp):
-                # trace ray to sun. TODO: get x, y first, then determine if its on map, then collide
-                dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
-                self.pixels[i, j] += sun_color * self.collide(
-                    i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
-                ) / spp / 2
-
-                # trace ray to sky. TODO: get x, y first, then determine if its on map, then collide
-                az = ti.random(float) * 360.0
-                al = ti.asin(ti.random(float)) * 90.0
-                dx, dy, dz = self.get_direction(az, al, 0.0)
-                self.pixels[i, j] += sky_color * self.collide(
-                    i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
-                ) / spp / 2
-
-            # gamma correction
-            self.pixels[i, j] = self.pixels[i, j] ** (1.0/2.2)
-
 
     def get_image(self):
         return self.pixels.to_numpy().astype(np.float32)
