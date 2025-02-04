@@ -26,7 +26,7 @@ class BaseRenderer:
             self.map_color.fill(ti.Vector([1.0, 1.0, 1.0]))
         self.pixels = ti.Vector.field(n=3, dtype=float, shape=(self.w_canvas, self.h_canvas))
         self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
-
+        self.brightness = 1.0
 
     def initialize_maxmipmap(self):
         # calculate maximum mipmap using the height map as source image.
@@ -166,6 +166,7 @@ class BaseRenderer:
         sky_color: ti.math.vec3,
         l_max: float,
         random_xy: bool,
+        brightness: float,
     ):
         """
         Main rendering function. This is a very basic
@@ -226,7 +227,7 @@ class BaseRenderer:
                     ) / spp / 2
 
                 # gamma correction
-                self.pixels[i, j] = self.pixels[i, j] ** (1.0/2.2)
+                self.pixels[i, j] = (brightness * self.pixels[i, j]) ** (1.0/2.2)
 
     def get_image(self):
         return self.pixels.to_numpy().astype(np.float32)
@@ -283,4 +284,5 @@ class Renderer(BaseRenderer):
             sky_color=self.sky_color,
             l_max=self.l_max,
             random_xy=self.random_xy,
+            brightness=self.brightness,
         )
