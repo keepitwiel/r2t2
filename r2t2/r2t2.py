@@ -2,8 +2,6 @@ import taichi as ti
 import numpy as np
 
 
-BLACK = ti.Vector([0.0, 0.0, 0.0])
-
 
 @ti.data_oriented
 class BaseRenderer:
@@ -12,19 +10,36 @@ class BaseRenderer:
         height_map: np.ndarray,
         map_color: np.ndarray = None,
         canvas_shape: tuple[int, int] = (800, 600),
+        rgb_type: str = "float",
     ):
         self.w_map, self.h_map = height_map.shape
         self.w_canvas, self.h_canvas = canvas_shape
-        self.height_map = ti.field(dtype=float, shape=(self.w_map, self.h_map))
+        self.height_map = ti.field(dtype=ti.f32, shape=(self.w_map, self.h_map))
         self.height_map.from_numpy(height_map)
         self.max_value = np.max(height_map)
         self.min_value = np.min(height_map)
-        self.map_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
-        if map_color is not None:
-            self.map_color.from_numpy(map_color)
-        else:
-            self.map_color.fill(ti.Vector([1.0, 1.0, 1.0]))
-        self.pixels = ti.Vector.field(n=3, dtype=float, shape=(self.w_canvas, self.h_canvas))
+
+        self.rgb_type = rgb_type
+
+        if rgb_type == "float":
+            self.map_color = ti.Vector.field(n=3, dtype=ti.f32, shape=(self.w_map, self.h_map))
+            if map_color is not None:
+                map_color = map_color.astype(np.float32)
+                self.map_color.from_numpy(map_color)
+            else:
+                self.map_color.fill(ti.Vector([1.0, 1.0, 1.0]))
+            self.pixels = ti.Vector.field(n=3, dtype=ti.f32, shape=(self.w_canvas, self.h_canvas))
+            self.black = ti.Vector([0.0, 0.0, 0.0], dt=ti.f32)
+        elif rgb_type == "uint8":
+            self.map_color = ti.Vector.field(n=3, dtype=ti.uint8, shape=(self.w_map, self.h_map))
+            if map_color is not None:
+                map_color = map_color.astype(np.uint8)
+                self.map_color.from_numpy(map_color)
+            else:
+                self.map_color.fill(ti.Vector([255, 255, 255]))
+            self.pixels = ti.Vector.field(n=3, dtype=ti.uint8, shape=(self.w_canvas, self.h_canvas))
+            self.black = ti.Vector([0, 0, 0], dt=ti.uint8)
+
         self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
         self.brightness = 1.0
 
@@ -110,7 +125,7 @@ class BaseRenderer:
         return result
 
     @ti.func
-    def collide(
+    def collide_float(
         self,
         i: int,
         j: int,
@@ -148,6 +163,45 @@ class BaseRenderer:
 
         return result
 
+    @ti.func
+    def collide_uint8(
+        self,
+        i: int,
+        j: int,
+        x_offset: float,
+        y_offset: float,
+        dx: float,
+        dy: float,
+        dz: float,
+        zoom: float,
+        l_max: float,
+        random_xy: bool,
+    ):
+        t = 0.0
+        result = ti.Vector([0, 0, 0], dt=ti.uint8)
+        dx_ = ti.random(dtype=float) if random_xy else 0.5
+        dy_ = ti.random(dtype=float) if random_xy else 0.5
+        x_ = i + dx_
+        y_ = j + dy_
+        x = x_offset + x_ / zoom
+        y = y_offset + y_ / zoom
+        if 0 <= x < self.w_map and 0 <= y < self.h_map:
+            z = self.height_map[int(x), int(y)]
+            c = ti.Vector([255, 255, 255]) # self.map_color[int(x), int(y)]
+            while True:
+                dt = self.get_propagation_length(x, y, z, dx, dy, max_levels=self.n_levels)
+                if dt == 0.0:
+                    break
+                t += dt
+                x += dt * dx
+                y += dt * dy
+                z += dt * dz
+                if x <= 0.0 or x >= self.w_map or y <= 0.0 or y >= self.h_map or z >= self.max_value or t >= l_max:
+                    result = c
+                    break
+
+        return result
+
     @ti.kernel
     def render_internal(
         self,
@@ -167,6 +221,7 @@ class BaseRenderer:
         l_max: float,
         random_xy: bool,
         brightness: float,
+        is_float: bool,
     ):
         """
         Main rendering function. This is a very basic
@@ -210,24 +265,34 @@ class BaseRenderer:
         """
         for i, j in self.pixels:
             if x <= i < x + w and y <= j < y + h:
-                self.pixels[i, j] = BLACK
+                self.pixels[i, j] = self.black
                 for _ in range(spp):
                     # trace ray to sun. TODO: get x, y first, then determine if its on map, then collide
                     dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
-                    self.pixels[i, j] += sun_color * self.collide(
-                        i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
-                    ) / spp / 2
+                    if is_float:
+                        self.pixels[i, j] += sun_color * self.collide_float(
+                            i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
+                        ) / spp / 2
+                    else:
+                        self.pixels[i, j] += (int(255 * sun_color) * self.collide_uint8(
+                            i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
+                        ) // 2)
 
                     # trace ray to sky. TODO: get x, y first, then determine if its on map, then collide
                     az = ti.random(float) * 360.0
                     al = ti.asin(ti.random(float)) * 90.0
                     dx, dy, dz = self.get_direction(az, al, 0.0)
-                    self.pixels[i, j] += sky_color * self.collide(
-                        i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
-                    ) / spp / 2
+                    if is_float:
+                        self.pixels[i, j] += sky_color * self.collide_float(
+                            i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
+                        ) / spp / 2
+                    else:
+                        self.pixels[i, j] += (int(255 * sky_color) * self.collide_uint8(
+                            i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
+                        ) // 2)
 
-                # gamma correction
-                self.pixels[i, j] = (brightness * self.pixels[i, j]) ** (1.0/2.2)
+                # # gamma correction
+                # self.pixels[i, j] = (brightness * self.pixels[i, j]) ** (1.0/2.2)
 
     def get_image(self):
         return self.pixels.to_numpy().astype(np.float32)
@@ -251,8 +316,9 @@ class Renderer(BaseRenderer):
         height_map: np.ndarray,
         map_color: np.ndarray = None,
         canvas_shape: tuple[int, int] = (800, 600),
+        rgb_type: str = "float",
     ):
-        super().__init__(height_map, map_color, canvas_shape)
+        super().__init__(height_map, map_color, canvas_shape, rgb_type)
         self.azimuth: float = 45.0
         self.altitude: float = 45.0
         self.zoom: float = 1.0
@@ -268,6 +334,7 @@ class Renderer(BaseRenderer):
     def render(self, bbox: tuple[int, int, int, int] | None = None):
         if bbox is None:
             bbox = [0, 0, self.w_canvas, self.h_canvas]
+        float_bool = True if self.rgb_type == "float" else False
         self.render_internal(
             x=bbox[0],
             y=bbox[1],
@@ -285,4 +352,5 @@ class Renderer(BaseRenderer):
             l_max=self.l_max,
             random_xy=self.random_xy,
             brightness=self.brightness,
+            is_float=float_bool,
         )

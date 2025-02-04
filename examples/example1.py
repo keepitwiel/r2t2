@@ -95,7 +95,7 @@ def example_map_1(n):
 
 def main(n):
     z, c = example_map_1(n)
-    renderer = Renderer(height_map=z, map_color=c)
+    renderer = Renderer(height_map=z, map_color=c, rgb_type="uint8")
     run(renderer)
 
 
