@@ -38,7 +38,7 @@ h = np.sin(mx * np.pi) + np.sin(my * np.pi)
 
 # initialize renderer
 renderer = BaseRenderer(h)
-renderer.render_internal(
+renderer.render_taichi_live(
     azimuth=45,  # horizontal direction of Sun, in degrees
     altitude=45,  # angle of Sun over horizon, in degrees
     zoom=1.0,  # camera zoom level

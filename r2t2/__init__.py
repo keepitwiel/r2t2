@@ -1,1 +1,1 @@
-from .r2t2 import Renderer
+from .renderer import Renderer
