@@ -28,8 +28,8 @@ def run(renderer: Renderer):
         # show GUIs
         with gui.sub_window("Camera", 0.5, 0.1, width=0.4, height=0.4):
             renderer.zoom = gui.slider_float("Zoom", renderer.zoom, 0.1, 10.0)
-            renderer.x_offset = gui.slider_float("X offset", renderer.x_offset, -renderer.w_map, renderer.w_map)
-            renderer.y_offset = gui.slider_float("Y offset", renderer.y_offset, -renderer.h_map, renderer.h_map)
+            renderer.x_center = gui.slider_float("x center", renderer.x_center, 0.0, 1.0)
+            renderer.y_center = gui.slider_float("y center", renderer.y_center, 0.0, 1.0)
             show_maxmipmap = gui.checkbox("Show MaxMipMap", show_maxmipmap)
             renderer.spp = gui.slider_int("Samples per pixel", renderer.spp, 1, 16)
             renderer.brightness = gui.slider_float("Brightness", renderer.brightness, 0.1, 10.0)

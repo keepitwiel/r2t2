@@ -25,8 +25,8 @@ class Renderer(TaichiRenderer):
         self.azimuth: float = 45.0
         self.altitude: float = 45.0
         self.zoom: float = 1.0
-        self.x_offset: float = 0.0
-        self.y_offset: float = 0.0
+        self.x_center: float = 0.5
+        self.y_center: float = 0.5
         self.spp: int = 1
         self.sun_radius: float = 2.5
         self.sun_color: tuple[float, float, float] = (1.0, 0.9, 0.0)
@@ -34,31 +34,44 @@ class Renderer(TaichiRenderer):
         self.l_max: float = 2**self.n_levels
         self.random_xy: bool = True
 
-    def render(self, bbox: tuple[int, int, int, int] | None = None, use_static: bool = False):
+    def get_bbox(self):
+        """Returns a relative bounding box consisting of
+        lower left coordinates and width/height.
+
+        If self.w_canvas = self.w_map, self.h_canvas = self.h_map
+        and self.zoom = 1.0, then the bbox is [0, 0, 1, 1]
+        :returns: x, y, w, h.
+        """
+        w = self.w_canvas / self.w_map / self.zoom
+        h = self.h_canvas / self.h_map / self.zoom
+        x = self.x_center - 0.5 * w
+        y = self.y_center - 0.5 * h
+        return x, y, w, h
+
+    def render(self, use_static: bool = False):
         """
         Function that calls a render function in the
         TaichiRenderer class.
 
-        Depending on the `use_static` flag, it either calls
-        `render_taichi_live` or `render_taichi_static`. The
-        former does "live" path tracing, and therefore might
-        be slow. The latter uses a static map color that
-        has been shaded once by `render_taichi_live` and should
-        be faster.
+        :param use_static: if False, this function calls
+            `render_taichi_live`; if True, it calls `render_taichi_static`.
+
+            The former does "live" path tracing, and therefore might
+            be slow. The latter uses a static map color that
+            has been shaded once by `render_taichi_live` and should
+            be faster.
+        :return: None
         """
-        if bbox is None:
-            bbox = [0, 0, self.w_canvas, self.h_canvas]
+        x, y, w, h = self.get_bbox()
+
         if not use_static:
             self.render_taichi_live(
-                x=bbox[0],
-                y=bbox[1],
-                w=bbox[2],
-                h=bbox[3],
+                x=x,
+                y=y,
+                w=w,
+                h=h,
                 azimuth=self.azimuth,
                 altitude=self.altitude,
-                zoom=self.zoom,
-                x_offset=self.x_offset,
-                y_offset=self.y_offset,
                 spp=self.spp,
                 sun_radius=self.sun_radius,
                 sun_color=self.sun_color,
@@ -69,13 +82,10 @@ class Renderer(TaichiRenderer):
             )
         else:
             self.render_taichi_static(
-                x=bbox[0],
-                y=bbox[1],
-                w=bbox[2],
-                h=bbox[3],
-                zoom=self.zoom,
-                x_offset=self.x_offset,
-                y_offset=self.y_offset,
+                x=x,
+                y=y,
+                w=w,
+                h=h,
                 random_xy=self.random_xy,
                 brightness=self.brightness,
             )
