@@ -27,30 +27,20 @@ pip install -r requirements.txt
 ```python
 import numpy as np
 import taichi as ti
-from r2t2 import BaseRenderer
+from r2t2 import Renderer
 
 # initialize backend framework
 ti.init(ti.cpu)
 
 # create height map
 mx, my = np.mgrid[-1:1:11j, -1:1:11j]
-h = np.sin(mx * np.pi) + np.sin(my * np.pi)
+height_map = np.sin(mx * np.pi) + np.sin(my * np.pi)
 
 # initialize renderer
-renderer = BaseRenderer(h)
-renderer.render_taichi_live(
-    azimuth=45,  # horizontal direction of Sun, in degrees
-    altitude=45,  # angle of Sun over horizon, in degrees
-    zoom=1.0,  # camera zoom level
-    x_offset=0.0,  # horizontal camera offset from center
-    y_offset=0.0,  # vertical camera offset from center
-    spp=1,  # samples per pixel
-    sun_radius=0.0,  # radius of Sun in degrees
-    sun_color=(1.0, 0.9, 0.0),  # Sun color (RGB)
-    sky_color=(0.0, 0.0, 1.0),  # Sky color (RGB)
-    l_max=np.inf,  # maximum length of rays
-    random_xy=True,  # randomize ray spawn point
-)
+renderer = Renderer(height_map, canvas_shape=height_map.shape)
+
+# render scene
+renderer.render()
 
 # get image
 image = renderer.get_image()  # an 11x11 RGB float32 array

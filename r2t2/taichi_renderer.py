@@ -127,72 +127,61 @@ class TaichiRenderer:
         return result
 
     @ti.func
-    def transform_coordinates(
-        self,
-        i: int,
-        j: int,
-        x_offset: float,
-        y_offset: float,
-        zoom: float,
-        random_xy: bool,
-    ):
-        dx_ = ti.random(dtype=float) if random_xy else 0.5
-        dy_ = ti.random(dtype=float) if random_xy else 0.5
-        x_ = i + dx_
-        y_ = j + dy_
-        x = x_offset + x_ / zoom
-        y = y_offset + y_ / zoom
-        return x, y
-
-    @ti.func
-    def get_static_map_color(
-        self,
-        i: int,
-        j: int,
-        x_offset: float,
-        y_offset: float,
-        zoom: float,
-        random_xy: bool,
-    ):
-        result = BLACK
-        x, y = self.transform_coordinates(i, j, x_offset, y_offset, zoom, random_xy)
-        if 0 <= x < self.w_map and 0 <= y < self.h_map:
-            result = self.static_map_color[int(x), int(y)]
-        return result
-
-    @ti.func
     def collide(
         self,
-        i: int,
-        j: int,
-        x_offset: float,
-        y_offset: float,
+        x: float,
+        y: float,
         dx: float,
         dy: float,
         dz: float,
-        zoom: float,
         l_max: float,
-        random_xy: bool,
     ):
         t = 0.0
         result = BLACK
-        x, y = self.transform_coordinates(i, j, x_offset, y_offset, zoom, random_xy)
-        if 0 <= x < self.w_map and 0 <= y < self.h_map:
-            z = self.height_map[int(x), int(y)]
-            c = self.map_color[int(x), int(y)]
-            while True:
-                dt = self.get_propagation_length(x, y, z, dx, dy, max_levels=self.n_levels)
-                if dt == 0.0:
-                    break
-                t += dt
-                x += dt * dx
-                y += dt * dy
-                z += dt * dz
-                if x <= 0.0 or x >= self.w_map or y <= 0.0 or y >= self.h_map or z >= self.max_value or t >= l_max:
-                    result = c
-                    break
+        z = self.height_map[int(x), int(y)]
+        c = self.map_color[int(x), int(y)]
+        while True:
+            dt = self.get_propagation_length(x, y, z, dx, dy, max_levels=self.n_levels)
+            if dt == 0.0:
+                break
+            t += dt
+            x += dt * dx
+            y += dt * dy
+            z += dt * dz
+            if x <= 0.0 or x >= self.w_map or y <= 0.0 or y >= self.h_map or z >= self.max_value or t >= l_max:
+                result = c
+                break
 
         return result
+
+    @ti.func
+    def get_map_xy(
+        self,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        i: int,
+        j: int,
+        random_xy: bool,
+    ):
+        """
+        Given a bounding box (x, y, w, h), canvas pixel coordinates (i, j) and a random flag,
+        calculate a map coordinate (u, v) that is within the bounding box.
+
+        :param x: relative lower horizontal bound of map to be rendererd
+        :param y: relative lower vertical bound of map to be rendered
+        :param w: relative width of map to be rendered
+        :param h: relative height of map to be rendered
+        :param i: horizontal pixel coordinate
+        :param j: vertical pixel coordinate
+        :param random_xy: if True, randomize coordinates within pixel.
+        """
+        dx = ti.random(float) if random_xy else 0.5
+        dy = ti.random(float) if random_xy else 0.5
+        u = ((i + dx) * w / self.w_canvas + x) * self.w_map
+        v = ((j + dy) * h / self.h_canvas + y) * self.h_map
+        return u, v
 
     @ti.kernel
     def prerender_taichi(
@@ -216,31 +205,34 @@ class TaichiRenderer:
         for i, j in self.static_map_color:
             self.static_map_color[i, j] = BLACK
             for _ in range(spp):
-                # trace ray to sun. TODO: get x, y first, then determine if its on map, then collide
+                # trace ray to sun
+                u = i + ti.random(float) if random_xy else i + 0.5
+                v = j + ti.random(float) if random_xy else j + 0.5
+
                 dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
                 self.static_map_color[i, j] += sun_color * self.collide(
-                    i, j, 0, 0, dx, dy, dz, 1.0, l_max, random_xy
+                    u, v, dx, dy, dz, l_max,
                 ) / spp / 2
 
-                # trace ray to sky. TODO: get x, y first, then determine if its on map, then collide
+                # trace ray to sky
+                u = i + ti.random(float) if random_xy else i + 0.5
+                v = j + ti.random(float) if random_xy else j + 0.5
+
                 az = ti.random(float) * 360.0
                 al = ti.asin(ti.random(float)) * 90.0
                 dx, dy, dz = self.get_direction(az, al, 0.0)
                 self.static_map_color[i, j] += sky_color * self.collide(
-                    i, j, 0, 0, dx, dy, dz, 1.0, l_max, random_xy
+                    u, v, dx, dy, dz, l_max,
                 ) / spp / 2
 
 
     @ti.kernel
     def render_taichi_static(
         self,
-        x: int,
-        y: int,
-        w: int,
-        h: int,
-        zoom: float,
-        x_offset: float,
-        y_offset: float,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
         random_xy: bool,
         brightness: float,
     ):
@@ -250,25 +242,21 @@ class TaichiRenderer:
         using function prerender_taichi).
         """
         for i, j in self.live_canvas:
-            if x <= i < x + w and y <= j < y + h:
-                self.live_canvas[i, j] = self.get_static_map_color(
-                    i, j, x_offset, y_offset, zoom, random_xy
-                )
+            self.live_canvas[i, j] = BLACK
+            u, v = self.get_map_xy(x, y, w, h, i, j, random_xy)
+            if 0 <= u < self.w_map and 0 <= v < self.h_map:
+                self.live_canvas[i, j] = self.static_map_color[int(u), int(v)]
                 self.live_canvas[i, j] = (brightness * self.live_canvas[i, j]) ** (1.0 / 2.2)
-
 
     @ti.kernel
     def render_taichi_live(
         self,
-        x: int,
-        y: int,
-        w: int,
-        h: int,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
         azimuth: float,
         altitude: float,
-        zoom: float,
-        x_offset: float,
-        y_offset: float,
         spp: int,
         sun_radius: float,
         sun_color: ti.math.vec3,
@@ -280,7 +268,7 @@ class TaichiRenderer:
         """
         Main rendering function. This is a very basic
         ray tracing algorithm that either finds a light source
-        or not for each pixel. There is no path tracing.
+        or not for each collision call. There is no path tracing.
 
         Per pixel (that is inside bounding box (x, y, w, h)
         we try to collect light from two sources:
@@ -295,15 +283,15 @@ class TaichiRenderer:
         color; otherwise black. This map color is then multiplied
         by the light source color.
 
-        :param x: lower bound of horizontal pixel range to be rendererd
-        :param y: lower bound of vertical pixel range to be rendered
-        :param w: width of pixel range to be rendered
-        :param h: height of pixel range to be rendered
+        :param x: relative lower horizontal bound of map to be rendererd
+        :param y: relative lower vertical bound of map to be rendered
+        :param w: relative width of map to be rendered
+        :param h: relative height of map to be rendered
         :param azimuth: Sun azimuth (degrees)
         :param altitude: Sun altitude above horizon (degrees)
         :param zoom: zoom factor. 1.0 = normal.
-        :param x_offset: horizontal camera offset
-        :param y_offset: vertical camera offset
+        :param x_center: horizontal camera offset
+        :param y_center: vertical camera offset
         :param spp: samples per pixel. For spp=1, each light source is sampled once.
         :param sun_radius: radius of Sun in degrees. This determines
             how wide the Sun is sampled.
@@ -319,26 +307,34 @@ class TaichiRenderer:
             appears.
         :return: None
         """
+
         for i, j in self.live_canvas:
-            if x <= i < x + w and y <= j < y + h:
-                self.live_canvas[i, j] = BLACK
+            self.live_canvas[i, j] = BLACK
+
+            # first, trace ray to sun
+            u, v = self.get_map_xy(x, y, w, h, i, j, random_xy)
+            # print(f"(i, j): ({i}, {j}), (u, v): ({u:03.2f}, {v:03.2f})")
+            if 0 <= u < self.w_map and 0 <= v < self.h_map:
                 for _ in range(spp):
                     # trace ray to sun. TODO: get x, y first, then determine if its on map, then collide
                     dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
                     self.live_canvas[i, j] += sun_color * self.collide(
-                        i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
+                        u, v, dx, dy, dz, l_max
                     ) / spp / 2
 
-                    # trace ray to sky. TODO: get x, y first, then determine if its on map, then collide
-                    az = ti.random(float) * 360.0
-                    al = ti.asin(ti.random(float)) * 90.0
-                    dx, dy, dz = self.get_direction(az, al, 0.0)
-                    self.live_canvas[i, j] += sky_color * self.collide(
-                        i, j, x_offset, y_offset, dx, dy, dz, zoom, l_max, random_xy
-                    ) / spp / 2
+            # then, trace ray to sky
+            u, v = self.get_map_xy(x, y, w, h, i, j, random_xy)
+            if 0 <= u < self.w_map and 0 <= v < self.h_map:
+                # trace ray to sky. TODO: get x, y first, then determine if its on map, then collide
+                az = ti.random(float) * 360.0
+                al = ti.asin(ti.random(float)) * 90.0
+                dx, dy, dz = self.get_direction(az, al, 0.0)
+                self.live_canvas[i, j] += sky_color * self.collide(
+                    u, v, dx, dy, dz, l_max
+                ) / spp / 2
 
-                # gamma correction
-                self.live_canvas[i, j] = (brightness * self.live_canvas[i, j]) ** (1.0 / 2.2)
+            # gamma correction
+            self.live_canvas[i, j] = (brightness * self.live_canvas[i, j]) ** (1.0 / 2.2)
 
     def get_image(self):
         return self.live_canvas.to_numpy().astype(np.float32)
