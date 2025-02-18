@@ -313,10 +313,9 @@ class TaichiRenderer:
 
             # first, trace ray to sun
             u, v = self.get_map_xy(x, y, w, h, i, j, random_xy)
-            # print(f"(i, j): ({i}, {j}), (u, v): ({u:03.2f}, {v:03.2f})")
             if 0 <= u < self.w_map and 0 <= v < self.h_map:
                 for _ in range(spp):
-                    # trace ray to sun. TODO: get x, y first, then determine if its on map, then collide
+                    # trace ray to sun
                     dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
                     self.live_canvas[i, j] += sun_color * self.collide(
                         u, v, dx, dy, dz, l_max
@@ -325,13 +324,14 @@ class TaichiRenderer:
             # then, trace ray to sky
             u, v = self.get_map_xy(x, y, w, h, i, j, random_xy)
             if 0 <= u < self.w_map and 0 <= v < self.h_map:
-                # trace ray to sky. TODO: get x, y first, then determine if its on map, then collide
-                az = ti.random(float) * 360.0
-                al = ti.asin(ti.random(float)) * 90.0
-                dx, dy, dz = self.get_direction(az, al, 0.0)
-                self.live_canvas[i, j] += sky_color * self.collide(
-                    u, v, dx, dy, dz, l_max
-                ) / spp / 2
+                for _ in range(spp):
+                    # trace ray to sky
+                    az = ti.random(float) * 360.0
+                    al = ti.asin(ti.random(float)) * 90.0
+                    dx, dy, dz = self.get_direction(az, al, 0.0)
+                    self.live_canvas[i, j] += sky_color * self.collide(
+                        u, v, dx, dy, dz, l_max
+                    ) / spp / 2
 
             # gamma correction
             self.live_canvas[i, j] = (brightness * self.live_canvas[i, j]) ** (1.0 / 2.2)

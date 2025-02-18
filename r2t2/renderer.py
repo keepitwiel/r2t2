@@ -106,3 +106,9 @@ class Renderer(TaichiRenderer):
             l_max=self.l_max,
             random_xy=self.random_xy,
         )
+
+    @ti.kernel
+    def set_map_color(self, x: int, y: int, color: ti.math.vec3):
+        i = int(x)
+        j = int(y)
+        self.map_color[i, j] = ti.math.vec3(color)
