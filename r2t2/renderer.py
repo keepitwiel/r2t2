@@ -11,6 +11,7 @@ class Renderer(TaichiRenderer):
         height_map: np.ndarray,
         map_color: np.ndarray = None,
         canvas_shape: tuple[int, int] = (800, 600),
+        **kwargs,
     ):
         """
         Wrapper around TaichiRenderer.
@@ -22,17 +23,17 @@ class Renderer(TaichiRenderer):
         necessary attributes which are passed to TaichiRenderer.
         """
         super().__init__(height_map, map_color, canvas_shape)
-        self.azimuth: float = 45.0
-        self.altitude: float = 45.0
-        self.zoom: float = 1.0
-        self.x_center: float = 0.5
-        self.y_center: float = 0.5
-        self.spp: int = 1
-        self.sun_radius: float = 2.5
-        self.sun_color: tuple[float, float, float] = (1.0, 0.9, 0.0)
-        self.sky_color: tuple[float, float, float] = (0.2, 0.2, 1.0)
+        self.azimuth: float = kwargs.get("azimuth", 45.0)
+        self.altitude: float = kwargs.get("altitude", 45.0)
+        self.zoom: float = kwargs.get("zoom", 1.0)
+        self.x_center: float = kwargs.get("x_center", 0.5)
+        self.y_center: float = kwargs.get("y_center", 0.5)
+        self.spp: int = kwargs.get("spp", 1)
+        self.sun_radius: float = kwargs.get("sun_radius", 2.5)
+        self.sun_color: tuple[float, float, float] = kwargs.get("sun_color", (1.0, 0.9, 0.0))
+        self.sky_color: tuple[float, float, float] = kwargs.get("sky_color", (0.2, 0.2, 1.0))
         self.l_max: float = 2**self.n_levels
-        self.random_xy: bool = True
+        self.random_xy: bool = kwargs.get("random_xy", True)
 
     def get_bbox(self):
         """Returns a relative bounding box consisting of
