@@ -110,6 +110,8 @@ class Renderer(TaichiRenderer):
 
     @ti.kernel
     def set_map_color(self, x: int, y: int, color: ti.math.vec3):
-        i = int(x)
-        j = int(y)
-        self.map_color[i, j] = ti.math.vec3(color)
+        self.map_color[x, y] = ti.math.vec3(color)
+
+    def increment_height_map(self, x: int, y: int, dz: float):
+        self.height_map[x, y] += dz
+        self.initialize_maxmipmap()

@@ -289,9 +289,6 @@ class TaichiRenderer:
         :param h: relative height of map to be rendered
         :param azimuth: Sun azimuth (degrees)
         :param altitude: Sun altitude above horizon (degrees)
-        :param zoom: zoom factor. 1.0 = normal.
-        :param x_center: horizontal camera offset
-        :param y_center: vertical camera offset
         :param spp: samples per pixel. For spp=1, each light source is sampled once.
         :param sun_radius: radius of Sun in degrees. This determines
             how wide the Sun is sampled.
