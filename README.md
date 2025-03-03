@@ -14,10 +14,10 @@ onto a height map.
 git clone https://github.com/keepitwiel/r2t2
 ```
 
-Open the cloned repository in PyCharm, install a virtual environment and install the required packages:
+Open the cloned repository in PyCharm, install a virtual environment and install the package as follows:
 
 ```commandline
-pip install -r requirements.txt
+pip install r2t2
 ```
 
 ## Getting started
@@ -46,7 +46,14 @@ renderer.render()
 image = renderer.get_image()  # an 11x11 RGB float32 array
 ```
 
-### Some included examples
+### Examples
+The following examples are included in the package, but require
+some extra packages. These can be installed as follows:
+
+```commandline
+pip install r2t2[examples]
+```
+
 ```commandline
 python examples/example1.py
 ```
