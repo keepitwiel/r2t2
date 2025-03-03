@@ -1,17 +1,22 @@
 [project]
 name = "r2t2"
 description = "A simple, fast, top-down Ray Tracing Terrain Renderer (R2T2)"
-version = "0.6.0"
+version = "0.6.1"
+dependencies = [
+    "taichi==1.7.3",
+    "numpy==2.2.3",
+]
 
 [build-system]
 build-backend = "setuptools.build_meta"
 requires = [
     "setuptools>=40.8.0",
     "wheel",
-    "taichi",
-    "numpy",
-    "noise",
-    "scipy",
+]
+
+[project.optional-dependencies]
+examples = [
     "tqdm",
-    "opencv-python"
+    "noise",
+    "opencv-python",
 ]
