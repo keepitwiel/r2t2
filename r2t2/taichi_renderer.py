@@ -25,7 +25,7 @@ class TaichiRenderer:
         else:
             self.map_color.fill(WHITE)
         self.live_canvas = ti.Vector.field(n=3, dtype=float, shape=(self.w_canvas, self.h_canvas))
-        self.static_map_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
+        self.static_illumination_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
         self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
         self.brightness = 1.0
 
@@ -135,11 +135,12 @@ class TaichiRenderer:
         dy: float,
         dz: float,
         l_max: float,
+        static: bool,
     ):
         t = 0.0
         result = BLACK
         z = self.height_map[int(x), int(y)]
-        c = self.map_color[int(x), int(y)]
+        c = WHITE if static else self.map_color[int(x), int(y)]
         while True:
             dt = self.get_propagation_length(x, y, z, dx, dy, max_levels=self.n_levels)
             if dt == 0.0:
@@ -202,16 +203,16 @@ class TaichiRenderer:
         The idea is to call this function once, and then use
         render_taichi_static for the actual rendering.
         """
-        for i, j in self.static_map_color:
-            self.static_map_color[i, j] = BLACK
+        for i, j in self.static_illumination_color:
+            self.static_illumination_color[i, j] = BLACK
             for _ in range(spp):
                 # trace ray to sun
                 u = i + ti.random(float) if random_xy else i + 0.5
                 v = j + ti.random(float) if random_xy else j + 0.5
 
                 dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
-                self.static_map_color[i, j] += sun_color * self.collide(
-                    u, v, dx, dy, dz, l_max,
+                self.static_illumination_color[i, j] += sun_color * self.collide(
+                    u, v, dx, dy, dz, l_max, static=True,
                 ) / spp / 2
 
                 # trace ray to sky
@@ -221,10 +222,9 @@ class TaichiRenderer:
                 az = ti.random(float) * 360.0
                 al = ti.asin(ti.random(float)) * 90.0
                 dx, dy, dz = self.get_direction(az, al, 0.0)
-                self.static_map_color[i, j] += sky_color * self.collide(
-                    u, v, dx, dy, dz, l_max,
+                self.static_illumination_color[i, j] += sky_color * self.collide(
+                    u, v, dx, dy, dz, l_max, static=True,
                 ) / spp / 2
-
 
     @ti.kernel
     def render_taichi_static(
@@ -245,7 +245,7 @@ class TaichiRenderer:
             self.live_canvas[i, j] = BLACK
             u, v = self.get_map_xy(x, y, w, h, i, j, random_xy)
             if 0 <= u < self.w_map and 0 <= v < self.h_map:
-                self.live_canvas[i, j] = self.static_map_color[int(u), int(v)]
+                self.live_canvas[i, j] = self.map_color[int(u), int(v)] * self.static_illumination_color[int(u), int(v)]
                 self.live_canvas[i, j] = (brightness * self.live_canvas[i, j]) ** (1.0 / 2.2)
 
     @ti.kernel
@@ -315,7 +315,7 @@ class TaichiRenderer:
                     # trace ray to sun
                     dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
                     self.live_canvas[i, j] += sun_color * self.collide(
-                        u, v, dx, dy, dz, l_max
+                        u, v, dx, dy, dz, l_max, static=False
                     ) / spp / 2
 
             # then, trace ray to sky
@@ -327,7 +327,7 @@ class TaichiRenderer:
                     al = ti.asin(ti.random(float)) * 90.0
                     dx, dy, dz = self.get_direction(az, al, 0.0)
                     self.live_canvas[i, j] += sky_color * self.collide(
-                        u, v, dx, dy, dz, l_max
+                        u, v, dx, dy, dz, l_max, static=False
                     ) / spp / 2
 
             # gamma correction
