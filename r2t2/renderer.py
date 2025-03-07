@@ -34,6 +34,10 @@ class Renderer(TaichiRenderer):
         self.sky_color: tuple[float, float, float] = kwargs.get("sky_color", (0.2, 0.2, 1.0))
         self.l_max: float = 2**self.n_levels
         self.random_xy: bool = kwargs.get("random_xy", True)
+        self.static: bool = kwargs.get("static", False)
+        
+        if self.static:
+            self.prerender()
 
     def get_bbox(self):
         """Returns a relative bounding box consisting of
@@ -49,23 +53,21 @@ class Renderer(TaichiRenderer):
         y = self.y_center - 0.5 * h
         return x, y, w, h
 
-    def render(self, use_static: bool = False):
+    def render(self):
         """
         Function that calls a render function in the
         TaichiRenderer class.
 
-        :param use_static: if False, this function calls
-            `render_taichi_live`; if True, it calls `render_taichi_static`.
+        If self.static is True, this function uses a static map color that
+        has been shaded once by `render_taichi_live` and should
+        be faster. Otherwise, it does "live" path tracing, which might
+        be slower.
 
-            The former does "live" path tracing, and therefore might
-            be slow. The latter uses a static map color that
-            has been shaded once by `render_taichi_live` and should
-            be faster.
         :return: None
         """
         x, y, w, h = self.get_bbox()
 
-        if not use_static:
+        if not self.static:
             self.render_taichi_live(
                 x=x,
                 y=y,
