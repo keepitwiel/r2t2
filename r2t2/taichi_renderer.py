@@ -73,7 +73,7 @@ class TaichiRenderer:
 
 
     @ti.func
-    def get_propagation_length(self, x, y, z, dx, dy, max_levels):
+    def get_propagation_length(self, x: float, y: float, z: float, dx: float, dy: float, max_levels: int):
         """
         Given
         - a position (x, y, z) in ray traversion space and
@@ -115,11 +115,11 @@ class TaichiRenderer:
         return result
 
     @ti.func
-    def get_hierarchical_index(self, x, dx, step):
+    def get_hierarchical_index(self, x: float, dx: float, step: float):
         return int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
 
     @ti.func
-    def length_to_boundary(self, x, x_boundary, dx):
+    def length_to_boundary(self, x: float, x_boundary: float, dx: float):
         result = np.inf
         if dx != 0:
             result = (x_boundary - x) / dx
@@ -369,7 +369,7 @@ class TaichiRenderer:
 
     @staticmethod
     @ti.func
-    def get_direction(azimuth, altitude, sun_radius):
+    def get_direction(azimuth: float, altitude: float, sun_radius: float):
         u = sun_radius * (ti.random(float) - 0.5)
         v = sun_radius * (ti.random(float) - 0.5)
         azi_rad = (azimuth + u) * np.pi / 180

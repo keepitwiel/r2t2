@@ -93,7 +93,7 @@ class Renderer(TaichiRenderer):
                 brightness=self.brightness,
             )
 
-    def prerender(self, x: int = 0, y: int = 0, w: int = -1, h: int = -1) -> None:
+    def prerender(self, x: int = 0, y: int = 0, w: int = -1, h: int = -1):
         """
         Prerenders shadows to improve rendering speed when
         calling `render_taichi` with `use_static` flag
@@ -115,9 +115,9 @@ class Renderer(TaichiRenderer):
         )
 
     @ti.kernel
-    def set_map_color(self, x: int, y: int, color: ti.math.vec3) -> None:
+    def set_map_color(self, x: int, y: int, color: ti.math.vec3):
         self.map_color[x, y] = ti.math.vec3(color)
 
-    def increment_height_map(self, x: int, y: int, dz: float) -> None:
+    def increment_height_map(self, x: int, y: int, dz: float):
         self.height_map[x, y] += dz
         self.initialize_maxmipmap()
