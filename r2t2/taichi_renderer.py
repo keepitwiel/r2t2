@@ -226,15 +226,15 @@ class TaichiRenderer:
         height = h if h > 0 else self.h_map
         
         # Ensure we don't exceed map boundaries
-        x = max(0, min(x, self.w_map))
-        y = max(0, min(y, self.h_map))
-        width = min(width, self.w_map - x)
-        height = min(height, self.h_map - y)
+        x_ = max(0, min(x, self.w_map))
+        y_ = max(0, min(y, self.h_map))
+        width = min(width, self.w_map - x_)
+        height = min(height, self.h_map - y_)
         
         # Loop over the bounding box region
         for i, j in ti.ndrange(width, height):
-            map_i = x + i
-            map_j = y + j
+            map_i = x_ + i
+            map_j = y_ + j
             self.static_illumination_color[map_i, map_j] = BLACK
             for _ in range(spp):
                 # trace ray to sun
