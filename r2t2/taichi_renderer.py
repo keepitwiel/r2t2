@@ -195,10 +195,10 @@ class TaichiRenderer:
         sky_color: ti.math.vec3,
         l_max: float,
         random_xy: bool,
-        x: int = 0,
-        y: int = 0,
-        w: int = -1,
-        h: int = -1,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
     ):
         """
         Prerendering function which combines the map color with
