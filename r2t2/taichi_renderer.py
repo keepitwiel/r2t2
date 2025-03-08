@@ -26,21 +26,32 @@ class TaichiRenderer:
             self.map_color.fill(WHITE)
         self.live_canvas = ti.Vector.field(n=3, dtype=float, shape=(self.w_canvas, self.h_canvas))
         self.static_illumination_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
-        self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
+        self.maxmipmap, self.n_levels = self.update_maxmipmap()
         self.brightness = 1.0
 
-    def initialize_maxmipmap(self):
+    def update_maxmipmap(self, x: int = None, y: int = None, w: int = None, h: int = None):
         """
-        # calculate maximum mipmap using the height map as source image.
-        #
-        # If the source image does not have width/height that are both
-        # 2**n (n integer), we force it to be 2**n for convenience purposes.
-        """
+        Calculate or update maximum mipmap using the height map as source image.
+        
+        If x,y,w,h are provided, only updates the maxmipmap in that bounding box.
+        Otherwise initializes the full maxmipmap.
 
+        If the source image does not have width/height that are both
+        2**n (n integer), we force it to be 2**n for convenience purposes.
+
+        Args:
+            x: x coordinate of update region (optional)
+            y: y coordinate of update region (optional)
+            w: width of update region (optional)
+            h: height of update region (optional)
+
+        Returns:
+            Tuple of (maxmipmap field, number of mipmap levels)
+        """
         # First, calculate the maximum between the log of width and height.
-        w, h = self.w_map, self.h_map
-        log_w = np.log2(w)
-        log_h = np.log2(h)
+        map_w, map_h = self.w_map, self.h_map
+        log_w = np.log2(map_w)
+        log_h = np.log2(map_h)
         max_log = max(log_w, log_h)
 
         # if the log is not an integer, we round up - this is the number of levels
@@ -49,27 +60,86 @@ class TaichiRenderer:
         # Then, calculate the dimension parameter of the mipmap.
         dim = int(2**n_levels)
 
-        # we create a mipmap field using the dimension parameter
-        result = ti.field(
-            shape=(dim // 2, dim - 1),
-            dtype=float
-        )
-        result.fill(-np.inf)
+        # For full initialization
+        if x is None or y is None or w is None or h is None:
+            result = ti.field(
+                shape=(dim // 2, dim - 1),
+                dtype=float
+            )
+            result.fill(-np.inf)
 
-        maxmipmap = result.to_numpy()
-        z = -np.inf + np.zeros((dim, dim))
-        z[:w, :h] = self.height_map.to_numpy()[:w, :h]
+            maxmipmap = result.to_numpy()
+            z = -np.inf + np.zeros((dim, dim))
+            z[:map_w, :map_h] = self.height_map.to_numpy()[:map_w, :map_h]
 
-        y_offset = 0
-        for level in range(n_levels):
-            dim = dim // 2
-            z_ = np.stack([z[::2, ::2], z[::2, 1::2], z[1::2, ::2], z[1::2, 1::2]], axis=2)
-            z = np.max(z_, axis=2)
-            maxmipmap[0:dim, y_offset:y_offset + dim] = z
-            y_offset += dim
+            y_offset = 0
+            for level in range(n_levels):
+                dim = dim // 2
+                z_ = np.stack([z[::2, ::2], z[::2, 1::2], z[1::2, ::2], z[1::2, 1::2]], axis=2)
+                z = np.max(z_, axis=2)
+                maxmipmap[0:dim, y_offset:y_offset + dim] = z
+                y_offset += dim
 
-        result.from_numpy(maxmipmap)
-        return result, n_levels
+            result.from_numpy(maxmipmap)
+            return result, n_levels
+
+        # For partial update
+        else:
+            # Input validation
+            if x < 0 or y < 0 or w <= 0 or h <= 0:
+                raise ValueError("Invalid update region parameters")
+            if x + w > map_w or y + h > map_h:
+                raise ValueError("Update region exceeds map boundaries")
+
+            # Convert height map region to numpy for processing
+            z = self.height_map.to_numpy()
+            maxmipmap = self.maxmipmap.to_numpy()
+            
+            # Start with the base level update region
+            curr_x, curr_y = x, y
+            curr_w, curr_h = w, h
+            y_offset = 0
+            
+            for level in range(n_levels):
+                # Calculate the region to update at this level
+                level_dim = dim >> level
+                
+                # Update the maxmipmap at this level
+                if level == 0:
+                    # Base level just copies from height map
+                    region = z[curr_x:curr_x+curr_w, curr_y:curr_y+curr_h]
+                    maxmipmap[curr_x:curr_x+curr_w, y_offset+curr_y:y_offset+curr_h] = region
+                else:
+                    # Higher levels compute max of 2x2 blocks from previous level
+                    # We need to work with the full height map to properly compute maximums
+                    z_ = np.stack([
+                        z[::2, ::2], z[::2, 1::2],
+                        z[1::2, ::2], z[1::2, 1::2]
+                    ], axis=2)
+                    z = np.max(z_, axis=2)
+                    
+                    # Calculate the region coordinates for this level
+                    level_x = curr_x >> 1
+                    level_y = curr_y >> 1
+                    level_w = (curr_w + 1) >> 1
+                    level_h = (curr_h + 1) >> 1
+                    
+                    # Update the region in the maxmipmap
+                    region = z[level_x:level_x+level_w, level_y:level_y+level_h]
+                    maxmipmap[level_x:level_x+level_w, y_offset+level_y:y_offset+level_h] = region
+                
+                # Update offset and region for next level
+                y_offset += level_dim
+                curr_x >>= 1
+                curr_y >>= 1
+                curr_w = (curr_w + 1) >> 1
+                curr_h = (curr_h + 1) >> 1
+                
+                if curr_w == 0 or curr_h == 0:
+                    break
+            
+            self.maxmipmap.from_numpy(maxmipmap)
+            return self.maxmipmap, self.n_levels
 
 
     @ti.func

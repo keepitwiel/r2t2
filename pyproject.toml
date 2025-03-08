@@ -19,4 +19,5 @@ examples = [
     "tqdm",
     "noise",
     "opencv-python",
+    "pytest",
 ]

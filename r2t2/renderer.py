@@ -5,6 +5,9 @@ import numpy as np
 from .taichi_renderer import TaichiRenderer
 
 
+UPDATE_RADIUS = 10
+
+
 class Renderer(TaichiRenderer):
     def __init__(
         self,
@@ -120,4 +123,9 @@ class Renderer(TaichiRenderer):
 
     def increment_height_map(self, x: int, y: int, dz: float):
         self.height_map[x, y] += dz
-        self.initialize_maxmipmap()
+        self.update_maxmipmap(
+            x=x - UPDATE_RADIUS, 
+            y=y - UPDATE_RADIUS, 
+            w=2 * UPDATE_RADIUS + 1, 
+            h=2 * UPDATE_RADIUS + 1
+        )
