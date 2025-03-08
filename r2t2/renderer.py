@@ -39,7 +39,7 @@ class Renderer(TaichiRenderer):
         if self.static:
             self.prerender()
 
-    def get_bbox(self):
+    def get_bbox(self) -> tuple[float, float, float, float]:
         """Returns a relative bounding box consisting of
         lower left coordinates and width/height.
 
@@ -53,7 +53,7 @@ class Renderer(TaichiRenderer):
         y = self.y_center - 0.5 * h
         return x, y, w, h
 
-    def render(self):
+    def render(self) -> None:
         """
         Function that calls a render function in the
         TaichiRenderer class.
@@ -93,7 +93,7 @@ class Renderer(TaichiRenderer):
                 brightness=self.brightness,
             )
 
-    def prerender(self):
+    def prerender(self, x: int = 0, y: int = 0, w: int = -1, h: int = -1) -> None:
         """
         Prerenders shadows to improve rendering speed when
         calling `render_taichi` with `use_static` flag
@@ -108,16 +108,16 @@ class Renderer(TaichiRenderer):
             sky_color=self.sky_color,
             l_max=self.l_max,
             random_xy=self.random_xy,
-            x=0,
-            y=0,
-            w=-1,
-            h=-1,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
         )
 
     @ti.kernel
-    def set_map_color(self, x: int, y: int, color: ti.math.vec3):
+    def set_map_color(self, x: int, y: int, color: ti.math.vec3) -> None:
         self.map_color[x, y] = ti.math.vec3(color)
 
-    def increment_height_map(self, x: int, y: int, dz: float):
+    def increment_height_map(self, x: int, y: int, dz: float) -> None:
         self.height_map[x, y] += dz
         self.initialize_maxmipmap()
