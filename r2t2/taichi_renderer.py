@@ -195,6 +195,10 @@ class TaichiRenderer:
         sky_color: ti.math.vec3,
         l_max: float,
         random_xy: bool,
+        x: int = 0,
+        y: int = 0,
+        w: int = -1,
+        h: int = -1,
     ):
         """
         Prerendering function which combines the map color with
@@ -202,27 +206,54 @@ class TaichiRenderer:
 
         The idea is to call this function once, and then use
         render_taichi_static for the actual rendering.
+        
+        Args:
+            azimuth: Sun azimuth (degrees)
+            altitude: Sun altitude above horizon (degrees)
+            spp: samples per pixel
+            sun_radius: radius of Sun in degrees
+            sun_color: color of the Sun
+            sky_color: color of the Sky
+            l_max: maximum ray length
+            random_xy: if True, randomize coordinates within pixel
+            x: start x coordinate of bounding box (default: 0)
+            y: start y coordinate of bounding box (default: 0)
+            w: width of bounding box (default: -1 means full width)
+            h: height of bounding box (default: -1 means full height)
         """
-        for i, j in self.static_illumination_color:
-            self.static_illumination_color[i, j] = BLACK
+        # Set default width and height to full map dimensions if not specified
+        width = w if w > 0 else self.w_map
+        height = h if h > 0 else self.h_map
+        
+        # Ensure we don't exceed map boundaries
+        x = max(0, min(x, self.w_map))
+        y = max(0, min(y, self.h_map))
+        width = min(width, self.w_map - x)
+        height = min(height, self.h_map - y)
+        
+        # Loop over the bounding box region
+        for i, j in ti.ndrange(width, height):
+            map_i = x + i
+            map_j = y + j
+            self.static_illumination_color[map_i, map_j] = BLACK
             for _ in range(spp):
                 # trace ray to sun
-                u = i + ti.random(float) if random_xy else i + 0.5
-                v = j + ti.random(float) if random_xy else j + 0.5
+                u = map_i + ti.random(float) if random_xy else map_i + 0.5
+                v = map_j + ti.random(float) if random_xy else map_j + 0.5
 
                 dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
-                self.static_illumination_color[i, j] += sun_color * self.collide(
+                self.static_illumination_color[map_i, map_j] += sun_color * self.collide(
                     u, v, dx, dy, dz, l_max, static=True,
                 ) / spp / 2
 
                 # trace ray to sky
-                u = i + ti.random(float) if random_xy else i + 0.5
-                v = j + ti.random(float) if random_xy else j + 0.5
+                u = map_i + ti.random(float) if random_xy else map_i + 0.5
+                v = map_j + ti.random(float) if random_xy else map_j + 0.5
 
                 az = ti.random(float) * 360.0
                 al = ti.asin(ti.random(float)) * 90.0
                 dx, dy, dz = self.get_direction(az, al, 0.0)
-                self.static_illumination_color[i, j] += sky_color * self.collide(
+                self.static_illumination_color[map_i, map_j] += sky_color * self.collide(
                     u, v, dx, dy, dz, l_max, static=True,
                 ) / spp / 2
 

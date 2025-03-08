@@ -108,6 +108,10 @@ class Renderer(TaichiRenderer):
             sky_color=self.sky_color,
             l_max=self.l_max,
             random_xy=self.random_xy,
+            x=0,
+            y=0,
+            w=-1,
+            h=-1,
         )
 
     @ti.kernel
