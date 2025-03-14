@@ -125,3 +125,6 @@ class Renderer(TaichiRenderer):
     def increment_height_map(self, x: int, y: int, dz: float):
         self.height_map[x, y] += dz
         self.initialize_maxmipmap()
+
+    def set_l_max_override(self, x: int, y: int, value: float):
+        self.ray_length_override_map[x, y] = value
