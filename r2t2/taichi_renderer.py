@@ -26,10 +26,13 @@ class TaichiRenderer:
             self.map_color.fill(WHITE)
         self.live_canvas = ti.Vector.field(n=3, dtype=float, shape=(self.w_canvas, self.h_canvas))
         self.static_illumination_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
+        self.ray_length_override_map = ti.field(dtype=float, shape=(self.w_map, self.h_map))
+        self.ray_length_override_map.fill(np.inf)
         self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
         self.brightness = 1.0
+        self.prerendered = False
 
-    def initialize_maxmipmap(self):
+    def initialize_maxmipmap(self) -> tuple[np.ndarray, int]:
         """
         # calculate maximum mipmap using the height map as source image.
         #
@@ -139,8 +142,18 @@ class TaichiRenderer:
     ):
         t = 0.0
         result = BLACK
-        z = self.height_map[int(x), int(y)]
-        c = WHITE if static else self.map_color[int(x), int(y)]
+        i = int(x)
+        j = int(y)
+        z = self.height_map[i, j]
+        c = WHITE if static else self.map_color[i, j]
+
+        # the maximum ray length is equal to l_max when the
+        # override map is infite, else it is set to the
+        # override map value.
+        l_max_override = l_max
+        if self.ray_length_override_map[i, j] != np.inf:
+            l_max_override = self.ray_length_override_map[i, j]
+
         while True:
             dt = self.get_propagation_length(x, y, z, dx, dy, max_levels=self.n_levels)
             if dt == 0.0:
@@ -149,7 +162,7 @@ class TaichiRenderer:
             x += dt * dx
             y += dt * dy
             z += dt * dz
-            if x <= 0.0 or x >= self.w_map or y <= 0.0 or y >= self.h_map or z >= self.max_value or t >= l_max:
+            if x <= 0.0 or x >= self.w_map or y <= 0.0 or y >= self.h_map or z >= self.max_value or t >= l_max_override:
                 result = c
                 break
 

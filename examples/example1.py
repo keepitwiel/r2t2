@@ -13,7 +13,6 @@ def run(renderer: Renderer):
 
     # camera
     show_maxmipmap = False
-    spp = 4
 
     # algorithm
     l_max_max = renderer.l_max
@@ -37,6 +36,7 @@ def run(renderer: Renderer):
         with gui.sub_window("Algorithm", 0.5, 0.4, width=0.4, height=0.15):
             renderer.l_max = gui.slider_float("Maximum ray length", renderer.l_max, 0.0, l_max_max)
             renderer.random_xy = gui.checkbox("Randomize ray spawn point within pixel", renderer.random_xy)
+            renderer.static = gui.checkbox("Use statically generated illumination map", renderer.static)
 
         with gui.sub_window("Sun", 0.5, 0.6, width=0.4, height=0.25):
             renderer.azimuth = gui.slider_float(f"Azimuth (degrees)", renderer.azimuth, 0, 360)
