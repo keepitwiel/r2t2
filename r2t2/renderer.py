@@ -35,7 +35,7 @@ class Renderer(TaichiRenderer):
         self.l_max: float = 2**self.n_levels
         self.random_xy: bool = kwargs.get("random_xy", True)
         self.static: bool = kwargs.get("static", False)
-        
+
         if self.static:
             self.prerender()
 
@@ -84,6 +84,9 @@ class Renderer(TaichiRenderer):
                 brightness=self.brightness,
             )
         else:
+            if not self.prerendered:
+                self.prerender()
+
             self.render_taichi_static(
                 x=x,
                 y=y,
@@ -113,6 +116,7 @@ class Renderer(TaichiRenderer):
             w=w,
             h=h,
         )
+        self.prerendered = True
 
     @ti.kernel
     def set_map_color(self, x: int, y: int, color: ti.math.vec3):

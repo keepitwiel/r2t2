@@ -28,6 +28,7 @@ class TaichiRenderer:
         self.static_illumination_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
         self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
         self.brightness = 1.0
+        self.prerendered = False
 
     def initialize_maxmipmap(self):
         """
