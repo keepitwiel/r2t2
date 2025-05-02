@@ -5,14 +5,11 @@ from r2t2 import Renderer
 from height import simplex_height_map
 
 
-def run(renderer: Renderer):
+def run(renderer: Renderer, map_color: np.ndarray):
     window = ti.ui.Window(name='Example 1', res=(1200, 600), fps_limit=300, pos=(0, 0))
     gui = window.get_gui()
     canvas = window.get_canvas()
     out_image = np.zeros((1200, 600, 3), dtype=np.float32)
-
-    # camera
-    show_maxmipmap = False
 
     # algorithm
     l_max_max = renderer.l_max
@@ -22,21 +19,19 @@ def run(renderer: Renderer):
 
     while window.running:
         # render the image
-        renderer.render()
+        renderer.render(map_color)
 
         # show GUIs
         with gui.sub_window("Camera", 0.5, 0.1, width=0.4, height=0.4):
             renderer.zoom = gui.slider_float("Zoom", renderer.zoom, 0.1, 10.0)
             renderer.x_center = gui.slider_float("x center", renderer.x_center, 0.0, 1.0)
             renderer.y_center = gui.slider_float("y center", renderer.y_center, 0.0, 1.0)
-            show_maxmipmap = gui.checkbox("Show MaxMipMap", show_maxmipmap)
             renderer.spp = gui.slider_int("Samples per pixel", renderer.spp, 1, 16)
             renderer.brightness = gui.slider_float("Brightness", renderer.brightness, 0.1, 10.0)
 
         with gui.sub_window("Algorithm", 0.5, 0.4, width=0.4, height=0.15):
             renderer.l_max = gui.slider_float("Maximum ray length", renderer.l_max, 0.0, l_max_max)
             renderer.random_xy = gui.checkbox("Randomize ray spawn point within pixel", renderer.random_xy)
-            renderer.static = gui.checkbox("Use statically generated illumination map", renderer.static)
 
         with gui.sub_window("Sun", 0.5, 0.6, width=0.4, height=0.25):
             renderer.azimuth = gui.slider_float(f"Azimuth (degrees)", renderer.azimuth, 0, 360)
@@ -52,16 +47,10 @@ def run(renderer: Renderer):
         # note that the speed is not adjusted by frame rate
         renderer.azimuth = (renderer.azimuth + azimuth_speed) % 360
 
-        # display image
-        if show_maxmipmap:
-            mmm = renderer.maxmipmap.to_numpy().astype(np.float32)
-            out_image[:renderer.w_map // 2, :renderer.w_map - 1, 0] = mmm
-            out_image[:renderer.w_map // 2, :renderer.w_map - 1, 1] = mmm
-            out_image[:renderer.w_map // 2, :renderer.w_map - 1, 2] = mmm
-            canvas.set_image((out_image - np.float32(renderer.min_value)) / np.float32(renderer.max_value - renderer.min_value))
-        else:
-            out_image[:renderer.w_canvas, :renderer.h_canvas] = renderer.get_image()
-            canvas.set_image(out_image)
+        # set image of canvas
+        out_image[:renderer.w_canvas, :renderer.h_canvas] = renderer.get_image()
+        canvas.set_image(out_image)
+
         window.show()
 
 
@@ -95,8 +84,8 @@ def example_map_1(n):
 
 def main(n):
     z, c = example_map_1(n)
-    renderer = Renderer(height_map=z, map_color=c)
-    run(renderer)
+    renderer = Renderer(height_map=z)
+    run(renderer, map_color=c)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ def main():
     renderer = Renderer(height_map)
     pbar = tqdm()
     while True:
-        renderer.render()
+        renderer.render(map_color)
         pbar.update()
 
 
