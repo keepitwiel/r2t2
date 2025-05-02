@@ -36,11 +36,16 @@ ti.init(ti.cpu)
 mx, my = np.mgrid[-1:1:11j, -1:1:11j]
 height_map = np.sin(mx * np.pi) + np.sin(my * np.pi)
 
+# create a color array: this gives each cell an RGB color.
+# in this case, each cell is white
+w, h = height_map.shape
+color_map = np.ones((w, h, 3))  
+
 # initialize renderer
 renderer = Renderer(height_map, canvas_shape=height_map.shape)
 
 # render scene
-renderer.render()
+renderer.render(color_map)
 
 # get image
 image = renderer.get_image()  # an 11x11 RGB float32 array

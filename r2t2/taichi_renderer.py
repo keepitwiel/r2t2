@@ -10,7 +10,6 @@ class TaichiRenderer:
     def __init__(
         self,
         height_map: np.ndarray,
-        map_color: np.ndarray = None,
         canvas_shape: tuple[int, int] = (800, 600),
     ):
         self.w_map, self.h_map = height_map.shape
@@ -20,12 +19,7 @@ class TaichiRenderer:
         self.max_value = np.max(height_map)
         self.min_value = np.min(height_map)
         self.map_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
-        if map_color is not None:
-            self.map_color.from_numpy(map_color)
-        else:
-            self.map_color.fill(WHITE)
         self.live_canvas = ti.Vector.field(n=3, dtype=float, shape=(self.w_canvas, self.h_canvas))
-        self.static_illumination_color = ti.Vector.field(n=3, dtype=float, shape=(self.w_map, self.h_map))
         self.ray_length_override_map = ti.field(dtype=float, shape=(self.w_map, self.h_map))
         self.ray_length_override_map.fill(np.inf)
         self.maxmipmap, self.n_levels = self.initialize_maxmipmap()
@@ -138,14 +132,12 @@ class TaichiRenderer:
         dy: float,
         dz: float,
         l_max: float,
-        static: bool,
     ):
         t = 0.0
         result = BLACK
         i = int(x)
         j = int(y)
         z = self.height_map[i, j]
-        c = WHITE if static else self.map_color[i, j]
 
         # the maximum ray length is equal to l_max when the
         # override map is infite, else it is set to the
@@ -163,7 +155,7 @@ class TaichiRenderer:
             y += dt * dy
             z += dt * dz
             if x <= 0.0 or x >= self.w_map or y <= 0.0 or y >= self.h_map or z >= self.max_value or t >= l_max_override:
-                result = c
+                result = WHITE
                 break
 
         return result
@@ -198,102 +190,7 @@ class TaichiRenderer:
         return u, v
 
     @ti.kernel
-    def prerender_taichi(
-        self,
-        azimuth: float,
-        altitude: float,
-        spp: int,
-        sun_radius: float,
-        sun_color: ti.math.vec3,
-        sky_color: ti.math.vec3,
-        l_max: float,
-        random_xy: bool,
-        x: int,
-        y: int,
-        w: int,
-        h: int,
-    ):
-        """
-        Prerendering function which combines the map color with
-        shadow values that can be re-used again and again.
-
-        The idea is to call this function once, and then use
-        render_taichi_static for the actual rendering.
-        
-        Args:
-            azimuth: Sun azimuth (degrees)
-            altitude: Sun altitude above horizon (degrees)
-            spp: samples per pixel
-            sun_radius: radius of Sun in degrees
-            sun_color: color of the Sun
-            sky_color: color of the Sky
-            l_max: maximum ray length
-            random_xy: if True, randomize coordinates within pixel
-            x: start x coordinate of bounding box (default: 0)
-            y: start y coordinate of bounding box (default: 0)
-            w: width of bounding box (default: -1 means full width)
-            h: height of bounding box (default: -1 means full height)
-        """
-        # Set default width and height to full map dimensions if not specified
-        width = w if w > 0 else self.w_map
-        height = h if h > 0 else self.h_map
-        
-        # Ensure we don't exceed map boundaries
-        x_ = max(0, min(x, self.w_map))
-        y_ = max(0, min(y, self.h_map))
-        width = min(width, self.w_map - x_)
-        height = min(height, self.h_map - y_)
-        
-        # Loop over the bounding box region
-        for i, j in ti.ndrange(width, height):
-            map_i = x_ + i
-            map_j = y_ + j
-            self.static_illumination_color[map_i, map_j] = BLACK
-            for _ in range(spp):
-                # trace ray to sun
-                u = map_i + ti.random(float) if random_xy else map_i + 0.5
-                v = map_j + ti.random(float) if random_xy else map_j + 0.5
-
-                dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
-                self.static_illumination_color[map_i, map_j] += sun_color * self.collide(
-                    u, v, dx, dy, dz, l_max, static=True,
-                ) / spp / 2
-
-                # trace ray to sky
-                u = map_i + ti.random(float) if random_xy else map_i + 0.5
-                v = map_j + ti.random(float) if random_xy else map_j + 0.5
-
-                az = ti.random(float) * 360.0
-                al = ti.asin(ti.random(float)) * 90.0
-                dx, dy, dz = self.get_direction(az, al, 0.0)
-                self.static_illumination_color[map_i, map_j] += sky_color * self.collide(
-                    u, v, dx, dy, dz, l_max, static=True,
-                ) / spp / 2
-
-    @ti.kernel
-    def render_taichi_static(
-        self,
-        x: float,
-        y: float,
-        w: float,
-        h: float,
-        random_xy: bool,
-        brightness: float,
-    ):
-        """
-        Similar to render_taichi_live, except instead of ray tracing to obtain
-        shadow values, we lookup these values from a prerendererd image (rendered
-        using function prerender_taichi).
-        """
-        for i, j in self.live_canvas:
-            self.live_canvas[i, j] = BLACK
-            u, v = self.get_map_xy(x, y, w, h, i, j, random_xy)
-            if 0 <= u < self.w_map and 0 <= v < self.h_map:
-                self.live_canvas[i, j] = self.map_color[int(u), int(v)] * self.static_illumination_color[int(u), int(v)]
-                self.live_canvas[i, j] = (brightness * self.live_canvas[i, j]) ** (1.0 / 2.2)
-
-    @ti.kernel
-    def render_taichi_live(
+    def render_taichi(
         self,
         x: float,
         y: float,
@@ -308,6 +205,7 @@ class TaichiRenderer:
         l_max: float,
         random_xy: bool,
         brightness: float,
+        map_color: ti.types.ndarray(),
     ):
         """
         Main rendering function. This is a very basic
@@ -346,6 +244,9 @@ class TaichiRenderer:
             the pixel is sampled randomly. If False, we take the pixel midpoint.
         :param brightness: scalar factor to adjust how dark or how light the map
             appears.
+        :param map_color: RGB array with same width and height as height_map.
+            Each cell in this array is the color associated with the corresponding cell
+            of the height map.
         :return: None
         """
 
@@ -358,8 +259,10 @@ class TaichiRenderer:
                 for _ in range(spp):
                     # trace ray to sun
                     dx, dy, dz = self.get_direction(azimuth, altitude, sun_radius)
-                    self.live_canvas[i, j] += sun_color * self.collide(
-                        u, v, dx, dy, dz, l_max, static=False
+                    int_u, int_v  = int(u), int(v)
+                    map_color_ = ti.Vector((map_color[int_u, int_v, 0], map_color[int_u, int_v, 1], map_color[int_u, int_v, 2]))
+                    self.live_canvas[i, j] += sun_color * map_color_ * self.collide(
+                        u, v, dx, dy, dz, l_max,
                     ) / spp / 2
 
             # then, trace ray to sky
@@ -370,8 +273,10 @@ class TaichiRenderer:
                     az = ti.random(float) * 360.0
                     al = ti.asin(ti.random(float)) * 90.0
                     dx, dy, dz = self.get_direction(az, al, 0.0)
-                    self.live_canvas[i, j] += sky_color * self.collide(
-                        u, v, dx, dy, dz, l_max, static=False
+                    int_u, int_v  = int(u), int(v)
+                    map_color_ = ti.Vector((map_color[int_u, int_v, 0], map_color[int_u, int_v, 1], map_color[int_u, int_v, 2]))
+                    self.live_canvas[i, j] += sky_color * map_color_ * self.collide(
+                        u, v, dx, dy, dz, l_max,
                     ) / spp / 2
 
             # gamma correction
