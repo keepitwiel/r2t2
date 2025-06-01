@@ -43,7 +43,7 @@ jobs:
       run: |
         pyinstaller --onefile `
           --add-data "C:\hostedtoolcache\windows\Python\3.10.11\x64\lib\site-packages\taichi\_lib\runtime;taichi/_lib/runtime" `
-          romvlvs/build_test.py --name built_test.exe
+          r2t2/build_test.py --name built_test.exe
 
     - name: Test the Executable
       run: |
