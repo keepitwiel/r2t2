@@ -1,5 +1,7 @@
 import numpy as np
 
+from .algo_functions_parallel import _get_flat_mipmap_value
+
 
 class M4:
     def __init__(self, dimension: int, mx: np.ndarray, my: np.ndarray, z: np.ndarray):
@@ -12,6 +14,9 @@ class M4:
         self.z = z.astype(np.float32)
         self.minmipmap = self.get_mipmap(is_max=False)
         self.maxmipmap = self.get_mipmap(is_max=True)
+        # new
+        self.flat_minmipmap = self.get_flat_mipmap(is_max=False)
+        self.flat_maxmipmap = self.get_flat_mipmap(is_max=True)
 
     @staticmethod
     def reduce(array: np.ndarray, step_size: int, is_max: bool) -> np.ndarray:
@@ -38,9 +43,10 @@ class M4:
             result.append(buffer)
         return result
 
-    def get_array(self, level: int, is_max: bool) -> np.ndarray:
-        assert 0 <= level < self.n_levels, "invalid level."
-        return self.maxmipmap[level] if is_max else self.minmipmap[level]
+    def get_flat_mipmap(self, is_max: bool) -> np.ndarray:
+        arrays = self.maxmipmap if is_max else self.minmipmap
+        result = np.concatenate([array.ravel() for array in arrays])
+        return result
 
     def get_dimension(self) -> int:
         return self.dimension
@@ -49,4 +55,25 @@ class M4:
         return self.n_levels
 
     def get_global_max(self):
-        return self.maxmipmap[self.n_levels - 1][0, 0]
+        return self.flat_maxmipmap[-1]
+
+    def get_mipmap_value(self, level: int, i: int, j: int, is_max: bool) -> float:
+        arrays = self.maxmipmap if is_max else self.minmipmap
+        array = arrays[level]
+        result = float(array[i, j])
+        return result
+
+    def get_flat_mipmap_value(
+        self,
+        level: int,
+        i: int,
+        j: int,
+        is_max: bool
+    ) -> float:
+        return _get_flat_mipmap_value(
+            self.flat_maxmipmap if is_max else self.flat_minmipmap,
+            self.n_levels,
+            level,
+            i,
+            j,
+        )

@@ -24,4 +24,4 @@ def main(field_size, n_cells, amplitude, azimuth, altitude):
 
 if __name__ == "__main__":
     ti.init(ti.cpu)
-    main(field_size=1.0, n_cells=2**7, amplitude=1.0, azimuth=np.pi / 4, altitude=np.pi / 4)
+    main(field_size=1.0, n_cells=2**4, amplitude=1.0, azimuth=np.pi / 4, altitude=np.pi / 4)

@@ -2,6 +2,57 @@ import numpy as np
 import taichi as ti
 
 
+@ti.kernel
+def _get_flat_mipmap_value(
+    flat_mipmap: ti.types.ndarray(),
+    n_levels: int,
+    level: int,
+    i: int,
+    j: int,
+) -> float:
+    """Wrapper function for testing purposes"""
+    return get_flat_mipmap_value(flat_mipmap, n_levels, level, i, j)
+
+@ti.func
+def get_flat_mipmap_value(
+    flat_mipmap: ti.types.ndarray(),
+    n_levels: int,
+    level: int,
+    i: int,
+    j: int,
+) -> float:
+    """
+    Find index in a flat_mipmap given a level, and (i, j) coordinates
+
+    Example:
+        n_cells = 16
+        --
+        n_levels = 4
+        level = 2
+        i = 0, j = 0
+        len(flat_mipmap) = 256 + 64 + 16 + 4 + 1 = 341
+        --
+        offset = 0
+        dimension = 16
+
+        l = 1:
+        - offset = 0 + 16^2 = 256
+        - dimension = 8
+        l = 2:
+        - offset = 256 + 8^2 = 320
+        - dimension = 4
+
+        idx = 320 + 0 + 0 = 320
+    """
+    offset = 0
+    dimension = 2 ** n_levels
+    for l in range(1, level + 1):
+        offset += dimension * dimension
+        dimension = dimension // 2
+        # print(f"n_levels: {n_levels}, max level: {level}, level: {l}, reverse level: {reverse_level}, offset: {offset}, dimension: {dimension}, next offset: {offset + dimension**2}")
+    idx = offset + i * dimension + j
+    return flat_mipmap[idx]
+
 @ti.func
 def test_if_blocked(
     min_array: ti.types.ndarray(),
@@ -11,6 +62,8 @@ def test_if_blocked(
     i: int,
     j: int,
     global_max: float,
+    n_levels: int,
+    level: int,
 ) -> bool:
     """
     Returns True if reference cell at (i, j) is "blocked"
@@ -18,8 +71,8 @@ def test_if_blocked(
     given by line_coordinates.
     """
     result = False
-    w, h = min_array.shape
-    z_projected = max_array[i, j]  # initially, projected height is the maximum of the current cell
+    dimension = 2**(n_levels - level)
+    z_projected = get_flat_mipmap_value(max_array, n_levels, level, i, j)  # initially, projected height is the maximum of the current cell
     n = line_coordinates.shape[0]
     for k in range(1, n):
         z_projected += dz
@@ -33,16 +86,18 @@ def test_if_blocked(
         i1 = i + line_coordinates[k, 1, 0]
         j1 = j + line_coordinates[k, 1, 1]
 
-        inside0 = 0 <= i0 < w and 0 <= j0 < h
-        inside1 = 0 <= i1 < w and 0 <= j1 < h
+        inside0 = 0 <= i0 < dimension and 0 <= j0 < dimension
+        inside1 = 0 <= i1 < dimension and 0 <= j1 < dimension
 
         if not (inside0 or inside1):
             # we have left the pixel space
             break
 
         # get test cell values
-        z_min0 = min_array[i0, j0] if inside0 else -np.inf
-        z_min1 = min_array[i1, j1] if inside1 else -np.inf
+        z_min0 = get_flat_mipmap_value(min_array, n_levels, level, i0, j0)
+        z_min1 = get_flat_mipmap_value(min_array, n_levels, level, i0, j0)
+        # z_min0 = min_array[i0, j0] if inside0 else -np.inf
+        # z_min1 = min_array[i1, j1] if inside1 else -np.inf
 
         if z_projected < z_min0 and z_projected < z_min1:
             # projected height is smaller than both test minima,
@@ -63,6 +118,8 @@ def fill_shadow_array(
         line_coordinates: ti.types.ndarray(),
         dz: float,
         global_max: float,
+        n_levels: int,
+        level: int,
 ):
     for i_parent, j_parent in previous_array:
         # first, look up parent cell
@@ -87,4 +144,6 @@ def fill_shadow_array(
                         i=i_test,
                         j=j_test,
                         global_max=global_max,
+                        n_levels=n_levels,
+                        level=level,
                     )

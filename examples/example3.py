@@ -30,4 +30,4 @@ def main(n_cells: int) -> None:
 
 if __name__ == "__main__":
     ti.init(ti.cpu)
-    main(n_cells=2**10)
+    main(n_cells=2**9)

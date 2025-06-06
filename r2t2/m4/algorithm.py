@@ -23,10 +23,10 @@ def algorithm(
         previous_array = result[k]
         d = previous_array.shape[0]
         shadow_array = np.zeros((d * 2, d * 2), dtype=bool)
-        min_array = m4.get_array(level=level, is_max=False)
-        max_array = m4.get_array(level=level, is_max=True)
+        # min_array = m4.get_array(level=level, is_max=False)
+        # max_array = m4.get_array(level=level, is_max=True)
         dz = step_size * cell_size * projection_length * np.tan(altitude)
-        fill_shadow_array(shadow_array, previous_array, min_array, max_array, line_coordinates, dz, global_max)
+        fill_shadow_array(shadow_array, previous_array, m4.flat_minmipmap, m4.flat_maxmipmap, line_coordinates, dz, global_max, n_levels, level)
         result.append(shadow_array)
         k += 1
     return result
