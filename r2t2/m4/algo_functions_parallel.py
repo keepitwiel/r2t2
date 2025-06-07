@@ -94,8 +94,8 @@ def test_if_blocked(
             break
 
         # get test cell values
-        z_min0 = get_flat_mipmap_value(min_array, n_levels, level, i0, j0)
-        z_min1 = get_flat_mipmap_value(min_array, n_levels, level, i0, j0)
+        z_min0 = get_flat_mipmap_value(min_array, n_levels, level, i0, j0) if inside0 else -np.inf
+        z_min1 = get_flat_mipmap_value(min_array, n_levels, level, i1, j1) if inside1 else -np.inf
         # z_min0 = min_array[i0, j0] if inside0 else -np.inf
         # z_min1 = min_array[i1, j1] if inside1 else -np.inf
 
