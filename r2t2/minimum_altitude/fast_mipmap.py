@@ -25,7 +25,7 @@ def fast_maxmipmap(inp: ti.types.ndarray(), out_min: ti.types.ndarray(), out_max
     for i in range(n):
         for j in range(n):
             out_max[i, j] = reduce(inp[i, j], inp[i + 1, j], inp[i, j + 1], inp[i + 1, j + 1], is_max=True)
-            # out_min[i, j] = reduce(inp[i, j], inp[i + 1, j], inp[i, j + 1], inp[i + 1, j + 1], is_max=False)
+            out_min[i, j] = reduce(inp[i, j], inp[i + 1, j], inp[i, j + 1], inp[i + 1, j + 1], is_max=False)
 
     # second loop
     step = 2
