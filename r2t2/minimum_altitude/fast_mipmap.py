@@ -10,7 +10,7 @@ def reduce(a: float, b: float, c: float, d: float, is_max: bool):
 
 
 @ti.kernel
-def fast_maxmipmap(inp: ti.types.ndarray(), out_min: ti.types.ndarray(), out_max: ti.types.ndarray()):
+def fast_mipmap(inp: ti.types.ndarray(), out_min: ti.types.ndarray(), out_max: ti.types.ndarray()):
     """
     Creates a maxmipmap from an input array
     """
@@ -57,14 +57,14 @@ def fast_maxmipmap(inp: ti.types.ndarray(), out_min: ti.types.ndarray(), out_max
 def main(n_cells):
     for i in range(100):
         height_field = np.random.uniform(size=(n_cells + 1, n_cells + 1)).astype(np.float32)
-        maxmipmap = -np.inf * np.zeros((n_cells * 2, n_cells), dtype=np.float32)
-        minmipmap = np.inf * np.zeros((n_cells * 2, n_cells), dtype=np.float32)
+        maxmipmap = -np.inf * np.zeros((n_cells * 2 - 1, n_cells), dtype=np.float32)
+        minmipmap = np.inf * np.zeros((n_cells * 2 - 1, n_cells), dtype=np.float32)
         t0 = time()
-        fast_maxmipmap(height_field, minmipmap, maxmipmap)
+        fast_mipmap(height_field, minmipmap, maxmipmap)
         t1 = time()
         print(f"time: {(t1 - t0):.8f} s")
 
 
 if __name__ == "__main__":
     ti.init(ti.cpu)
-    main(n_cells=2048)
+    main(n_cells=128)
