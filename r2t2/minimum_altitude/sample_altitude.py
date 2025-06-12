@@ -95,25 +95,14 @@ def spherical_to_euclidean(azimuth: float, altitude: float):
 
 
 @ti.func
-def get_propagation_length(r: ti.math.vec2, dr: ti.math.vec2):
-    # Use floor to get the cell index
-    x_cell = ti.floor(r.x)
-    y_cell = ti.floor(r.y)
+def get_propagation_length_2(r: ti.math.vec2, dr: ti.math.vec2, step_size: int):
+    # get tx
+    x_cell = r.x - (r.x % step_size)
     xmin, xmax = x_cell, x_cell
-    ymin, ymax = y_cell, y_cell
-
-    # Define bounding box based on direction
     if dr.x >= 0:
-        xmax += 1
+        xmax += step_size
     else:
-        xmin -= 1
-
-    if dr.y >= 0:
-        ymax += 1
-    else:
-        ymin -= 1
-
-    # find step length from r to each wall of bounding box
+        xmin -= step_size
     tx = np.inf
     if dr.x != 0.0:
         if dr.x > 0.0:
@@ -121,6 +110,13 @@ def get_propagation_length(r: ti.math.vec2, dr: ti.math.vec2):
         else:
             tx = (xmin - r.x) / dr.x
 
+    # get ty
+    y_cell = r.y - (r.y % step_size)
+    ymin, ymax = y_cell, y_cell
+    if dr.y >= 0:
+        ymax += step_size
+    else:
+        ymin -= step_size
     ty = np.inf
     if dr.y != 0.0:
         if dr.y > 0.0:
@@ -148,9 +144,10 @@ def sample_altitude_simple(
     z0 = get_height(height_field, x, y)
     r = r0
     dr = ti.math.vec2(ti.cos(azimuth), ti.sin(azimuth))
+    step_size = 1
 
     while 0 <= r.x < n_cells and 0 <= r.y < n_cells and theta <= max_altitude:
-        t_min = get_propagation_length(r, dr)
+        t_min = get_propagation_length_2(r, dr, step_size)
         r += t_min * dr
         z_sample = get_height(height_field, r.x, r.y)
         w = r - r0

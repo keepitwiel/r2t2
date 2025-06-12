@@ -36,13 +36,13 @@ def main(n_cells: int):
         canvas.set_image((global_min_altitude + emitter_height - illumination_field) / emitter_height)
         window.show()
 
-        with gui.sub_window("angles", 0.5, 0.0, 0.5, 1.0):
+        with gui.sub_window("angles", 0.5, 0.0, 0.5, 0.3):
             global_min_altitude = gui.slider_float("Minimum altitude", global_min_altitude, 0.0, np.pi / 2 - emitter_height)
             emitter_height = gui.slider_float("Emitter height", emitter_height, 0.0, np.pi / 12)
             azimuth = gui.slider_float("Azimuth", azimuth, 0.0, 2 * np.pi)
             n_samples = gui.slider_int("n_samples", n_samples, 1, 16)
-        # azimuth += np.pi / 180
-        # azimuth = azimuth % (2.0 * np.pi)
+        theta += np.pi / 180
+        theta = theta % (2.0 * np.pi)
 
 
 
