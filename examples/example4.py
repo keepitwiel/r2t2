@@ -31,6 +31,7 @@ def main(n_cells: int):
             global_max_altitude=global_min_altitude + emitter_height,
             n_samples=n_samples,
             illumination_field=illumination_field,
+            simple=True,
         )
         canvas.set_image((global_min_altitude + emitter_height - illumination_field) / emitter_height)
         window.show()

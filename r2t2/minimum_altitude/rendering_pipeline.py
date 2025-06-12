@@ -26,6 +26,7 @@ class ShaderPipeline:
         global_max_altitude: float,
         n_samples: int,
         illumination_field: np.ndarray,
+        simple: bool = True,
     ):
         """
         Given a height field of (self.n_nodes x self.n_nodes), apply the rendering
@@ -37,15 +38,21 @@ class ShaderPipeline:
         assert height_field.shape == (self.n_nodes, self.n_nodes)
         illumination_field.fill(global_min_altitude)
         fast_mipmap(height_field, out_min=self.minmipmap, out_max=self.maxmipmap)
-        buffer = np.zeros(n_samples, dtype=np.float32)
-        quad_altitude_sampling(
-            height_field=height_field,
-            maxmipmap=self.maxmipmap,
-            azimuth=azimuth,
-            global_min_altitude=global_min_altitude,
-            global_max_altitude=global_max_altitude,
-            n_levels=self.n_levels,
-            n_samples=n_samples,
-            buffer=buffer,
-            out_array=illumination_field,
-        )
+
+        if simple:
+            simple_grid_sampling(
+                height_field, azimuth, global_min_altitude, global_max_altitude, illumination_field
+            )
+        else:
+            buffer = np.zeros(n_samples, dtype=np.float32)
+            quad_altitude_sampling(
+                height_field=height_field,
+                maxmipmap=self.maxmipmap,
+                azimuth=azimuth,
+                global_min_altitude=global_min_altitude,
+                global_max_altitude=global_max_altitude,
+                n_levels=self.n_levels,
+                n_samples=n_samples,
+                buffer=buffer,
+                out_array=illumination_field,
+            )

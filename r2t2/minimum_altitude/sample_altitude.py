@@ -95,6 +95,44 @@ def spherical_to_euclidean(azimuth: float, altitude: float):
 
 
 @ti.func
+def get_propagation_length(r: ti.math.vec2, dr: ti.math.vec2):
+    # Use floor to get the cell index
+    x_cell = ti.floor(r.x)
+    y_cell = ti.floor(r.y)
+    xmin, xmax = x_cell, x_cell
+    ymin, ymax = y_cell, y_cell
+
+    # Define bounding box based on direction
+    if dr.x >= 0:
+        xmax += 1
+    else:
+        xmin -= 1
+
+    if dr.y >= 0:
+        ymax += 1
+    else:
+        ymin -= 1
+
+    # find step length from r to each wall of bounding box
+    tx = np.inf
+    if dr.x != 0.0:
+        if dr.x > 0.0:
+            tx = (xmax - r.x) / dr.x
+        else:
+            tx = (xmin - r.x) / dr.x
+
+    ty = np.inf
+    if dr.y != 0.0:
+        if dr.y > 0.0:
+            ty = (ymax - r.y) / dr.y
+        else:
+            ty = (ymin - r.y) / dr.y
+
+    # find minimum step length
+    t_min = min(tx, ty)
+    return t_min
+
+@ti.func
 def sample_altitude_simple(
     x: float,
     y: float,
@@ -111,58 +149,17 @@ def sample_altitude_simple(
     r = r0
     dr = ti.math.vec2(ti.cos(azimuth), ti.sin(azimuth))
 
-    counter = 0
     while 0 <= r.x < n_cells and 0 <= r.y < n_cells and theta <= max_altitude:
-        # find bounding box of cell we're currently in
-        # Use floor to get the cell index
-        x_cell = ti.floor(r.x)
-        y_cell = ti.floor(r.y)
-        xmin, xmax = x_cell, x_cell
-        ymin, ymax = y_cell, y_cell
-
-        # Define bounding box based on direction
-        if dr.x >= 0:
-            xmax += 1
-        else:
-            xmin -= 1
-
-        if dr.y >= 0:
-            ymax += 1
-        else:
-            ymin -= 1
-
-        # find step length from r to each wall of bounding box
-        tx = np.inf
-        if dr.x != 0.0:
-            if dr.x > 0.0:
-                tx = (xmax - r.x) / dr.x
-            else:
-                tx = (xmin - r.x) / dr.x
-
-        ty = np.inf
-        if dr.y != 0.0:
-            if dr.y > 0.0:
-                ty = (ymax - r.y) / dr.y
-            else:
-                ty = (ymin - r.y) / dr.y
-
-        # find minimum step length
-        t_min = min(tx, ty)
-
-        # update r
+        t_min = get_propagation_length(r, dr)
         r += t_min * dr
-
-        # get height
         z_sample = get_height(height_field, r.x, r.y)
-
-        # determine new theta
         w = r - r0
         theta_sample = ti.atan2(z_sample - z0, ti.sqrt(w.x * w.x + w.y * w.y))
         if theta < theta_sample:
             theta = theta_sample
 
-        counter += 1
-
+    if theta >= max_altitude:
+        theta = max_altitude
     return theta
 
 
