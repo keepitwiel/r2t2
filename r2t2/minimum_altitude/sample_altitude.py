@@ -18,7 +18,6 @@ def get_propagation_length(
     This is the guaranteed length a ray can travel without
     colliding with the height map.
     """
-    print(r, dr)
     result = 0.0
     step = 1
     offset = 0
@@ -50,6 +49,19 @@ def get_propagation_length(
 
 @ti.func
 def get_hierarchical_index(x: float, dx: float, step: float):
+    """
+    returns the divisor of x. If x is a multiple of step, and the
+    direction of travel is negative (dx < 0), substract one.
+
+    Example 1: x = 32.5, dx = -0.3, step = 8
+    Returns: int(32.5 // 8) - 0 = 4
+
+    Example 2: x = 16.0, dx = 0.5, step = 4
+    Returns: int(16.0 // 4) - 0 = 4
+
+    Example 3: x = 16.0, dx = -0.5, step = 4
+    Returns: int(16.0 // 4) - 1 = 3
+    """
     return int(x // step) - (1 if x % step == 0.0 and dx < 0 else 0)
 
 
@@ -73,6 +85,87 @@ def get_height(height_field: ti.types.ndarray(), x: float, y: float):
         height_field[int_x + 1, int_y + 1]
     )  # simplified height - average of four corners. should be precomputed or use interpolation
     return z
+
+
+@ti.func
+def spherical_to_euclidean(azimuth: float, altitude: float):
+    a = ti.cos(altitude)
+    dr = ti.math.vec3(a * ti.cos(azimuth), a * ti.sin(azimuth), ti.sin(altitude))
+    return dr
+
+
+@ti.func
+def sample_altitude_simple(
+    x: float,
+    y: float,
+    azimuth: float,
+    min_altitude: float,
+    max_altitude: float,
+    height_field: ti.types.ndarray(),
+):
+    # setup
+    n_cells = height_field.shape[0] - 1
+    theta = min_altitude
+    r0 = ti.math.vec2(x, y)
+    z0 = get_height(height_field, x, y)
+    r = r0
+    dr = ti.math.vec2(ti.cos(azimuth), ti.sin(azimuth))
+
+    counter = 0
+    while 0 <= r.x < n_cells and 0 <= r.y < n_cells and theta <= max_altitude:
+        # find bounding box of cell we're currently in
+        # Use floor to get the cell index
+        x_cell = ti.floor(r.x)
+        y_cell = ti.floor(r.y)
+        xmin, xmax = x_cell, x_cell
+        ymin, ymax = y_cell, y_cell
+
+        # Define bounding box based on direction
+        if dr.x >= 0:
+            xmax += 1
+        else:
+            xmin -= 1
+
+        if dr.y >= 0:
+            ymax += 1
+        else:
+            ymin -= 1
+
+        # find step length from r to each wall of bounding box
+        tx = np.inf
+        if dr.x != 0.0:
+            if dr.x > 0.0:
+                tx = (xmax - r.x) / dr.x
+            else:
+                tx = (xmin - r.x) / dr.x
+
+        ty = np.inf
+        if dr.y != 0.0:
+            if dr.y > 0.0:
+                ty = (ymax - r.y) / dr.y
+            else:
+                ty = (ymin - r.y) / dr.y
+
+        # find minimum step length
+        t_min = min(tx, ty)
+
+        # update r
+        r += t_min * dr
+
+        # get height
+        z_sample = get_height(height_field, r.x, r.y)
+
+        # determine new theta
+        w = r - r0
+        theta_sample = ti.atan2(z_sample - z0, ti.sqrt(w.x * w.x + w.y * w.y))
+        if theta < theta_sample:
+            theta = theta_sample
+
+        counter += 1
+
+    return theta
+
+
 
 @ti.func
 def sample_altitude(
@@ -98,13 +191,15 @@ def sample_altitude(
     r0 = ti.math.vec3(x, y, z)
     r = ti.math.vec3(x, y, z)
 
-    # todo: turn into function
-    a = ti.cos(min_altitude)
-    dr = ti.math.vec3(a * ti.cos(azimuth), a * ti.sin(azimuth), ti.sin(min_altitude))
+    dr = spherical_to_euclidean(azimuth, min_altitude)
     # print(f"start propagation: r={r}, dr={dr}, min_altitude={min_altitude:.2f}")
+
+
     while True:
         dt = get_propagation_length(r, dr, maxmipmap, height_field)
         if dt == 0.0:
+            if azimuth >= np.pi / 2:
+                print(azimuth, dt, r, dr)
             # ray collided with terrain - raise r.z and continue propagation
             r.z = get_height(height_field, r.x, r.y)
             diff = r - r0
@@ -116,8 +211,7 @@ def sample_altitude(
                 break
 
             # todo: turn into function
-            a = ti.cos(result)
-            dr = ti.math.vec3(a * ti.cos(azimuth), a * ti.sin(azimuth), ti.sin(result))
+            dr = spherical_to_euclidean(azimuth, result)
         else:
             t += dt
             r += dt * dr

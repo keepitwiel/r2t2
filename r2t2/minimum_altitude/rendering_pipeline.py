@@ -5,7 +5,7 @@ import numpy as np
 
 
 from .fast_mipmap import fast_mipmap
-from .quad_altitude import quad_altitude_sampling
+from .quad_altitude import quad_altitude_sampling, simple_grid_sampling
 
 
 class ShaderPipeline:

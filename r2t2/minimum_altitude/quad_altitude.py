@@ -1,7 +1,6 @@
 import taichi as ti
 
-from .sample_altitude import sample_altitude
-
+from .sample_altitude import sample_altitude, sample_altitude_simple
 
 EPSILON = 0.01
 
@@ -32,6 +31,20 @@ def error_min_max(
 
 
 @ti.kernel
+def simple_grid_sampling(
+    height_field: ti.types.ndarray(),
+    azimuth: float,
+    global_min_altitude: float,
+    global_max_altitude: float,
+    out_array: ti.types.ndarray(),
+):
+    for i, j in out_array:
+        x = i + ti.random(dtype=float)
+        y = j + ti.random(dtype=float)
+        out_array[i, j] = sample_altitude_simple(x, y, azimuth, global_min_altitude, global_max_altitude, height_field)
+
+
+@ti.kernel
 def quad_altitude_sampling(
     height_field: ti.types.ndarray(),
     maxmipmap: ti.types.ndarray(),
@@ -58,7 +71,6 @@ def quad_altitude_sampling(
 
 
     """
-    print(azimuth)
     dimension = 2**n_levels
     for inv in range(n_levels):
         level = n_levels - inv - 1
@@ -76,8 +88,9 @@ def quad_altitude_sampling(
                     for k in range(n_samples):
                         x = step_size * (i + ti.random(dtype=float))
                         y = step_size * (j + ti.random(dtype=float))
-                        buffer[k] = sample_altitude(x, y, azimuth, global_min_altitude, global_max_altitude, maxmipmap,
-                                                    height_field)
+                        # buffer[k] = sample_altitude(x, y, azimuth, global_min_altitude, global_max_altitude, maxmipmap,
+                        #                            height_field)
+                        buffer[k] = sample_altitude_simple(x, y, azimuth, global_min_altitude, global_max_altitude, height_field)
                     error = error_min_max(buffer, global_min_altitude, global_max_altitude)
                     if error < EPSILON or step_size == 1:
                         avg = mean(buffer)
