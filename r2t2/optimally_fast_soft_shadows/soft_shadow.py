@@ -176,7 +176,7 @@ def main():
             y = (j + 0.5) / n_cells
             r = np.array([x, y, maxmipmap[i, j]])
             dr = np.array([0.5, 0.5, np.sqrt(0.5)])
-            J_star[i, j] = fast_soft_shadow_algorithm_grok(N_prime, delta_R, r, dr, maxmipmap)
+            J_star[i, j] = fast_soft_shadow_algorithm(N_prime, delta_R, r, dr, maxmipmap)
             print(i, j, r, dr, J_star[i, j])
 
     plt.imshow(J_star)
