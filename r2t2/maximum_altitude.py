@@ -15,7 +15,7 @@ def get_height(height_field: ti.types.ndarray(), r: ti.math.vec2):
     w, h = height_field.shape
     i, j = int(r[0]), int(r[1])
     result = -np.inf
-    if 0 <= i < w - 1and 0 <= j < h - 1:
+    if 0 <= i < w - 1 and 0 <= j < h - 1:
         lx, ly = r[0] - i, r[1] - j
         result = (
             (1 - lx) * (1 - ly) * height_field[i, j] +
