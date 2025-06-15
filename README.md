@@ -70,3 +70,13 @@ python examples/example2.py
 ```
 A simple example showing framerate (FPS) of a height map based on an image of a raccoon.
 On a Macbook Air M3 (2024) with 8GB RAM, the framerate is around 90 FPS in GPU mode.
+
+```commandline
+python examples/example3.py
+```
+New in version 1.1: this example shows the MinimalRenderer in action.
+
+```commandline
+python examples/example_maximum_altitude.py
+```
+New in version 1.2: this example shows the Maximum Altitude renderer in action.
