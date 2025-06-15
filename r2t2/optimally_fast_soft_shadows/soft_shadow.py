@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+from examples.example1 import example_map_1
 
 """
 Table of symbols
@@ -87,6 +88,9 @@ def create_maxmipmap(z: np.ndarray) -> np.ndarray:
 def sample_maxmipmap(ray_position: np.ndarray, maxmipmap: np.ndarray, m: int) -> float:
     i, j = int(ray_position[0]), int(ray_position[1])
     n_cells = maxmipmap.shape[1]
+    if not (0 <= i < n_cells and 0 <= j < n_cells):
+        print(f"ray position out of bounds: (i, j)=({i}, {j}). Returning -np.inf")
+        return -np.inf
     step_size = 1
     offset = 0
     for _ in range(m):
@@ -100,10 +104,17 @@ def sample_maxmipmap(ray_position: np.ndarray, maxmipmap: np.ndarray, m: int) ->
     return float(maxmipmap[offset + i, j])
 
 
+def shadow_fraction(J_star: np.ndarray, surface_normal: np.ndarray, ray_normal: np.ndarray, light_radius: float):
+    # J_star = 0: fully shadowed (light completely occluded)
+    # J_star = 1: fully lit (no occlusion)
+    d = np.clip(2 * J_star * (surface_normal.dot(ray_normal)) / light_radius - 1, -1, 1)
+    term1 = 1 - (np.arccos(d) + d * np.sqrt(1 - d*d)) / np.pi
+    term2 = 1 - J_star
+    return np.maximum(term1, term2)
+
 
 def fast_soft_shadow_algorithm(
     N_prime: int,
-    delta_R: float,
     ray_origin: np.ndarray,
     ray_direction: np.ndarray,
     maxmipmap: np.ndarray
@@ -112,7 +123,6 @@ def fast_soft_shadow_algorithm(
     Fast Soft Shadow Algorithm.
     Args:
         N_prime: Number of steps (N′).
-        delta_R: Texel step size (∆R).
         ray_origin: NumPy array, ray starting point. (3D)
         ray_direction: NumPy array, ray direction (normalized). (3D)
         maxmipmap: NumPy array, contains maximum mipmap values for the height field
@@ -133,18 +143,14 @@ def fast_soft_shadow_algorithm(
 
         # Initial ray position at i = 0
         ray_position = ray_origin + t_k * ray_direction
-        if not (0 <= ray_position[0] < 1 and 0 <= ray_position[1] < 1):
-            break
         delta_max_h_k = ray_position[2] - sample_maxmipmap(ray_position, maxmipmap, m)  # ∆_max_h_k ← H − max_h(t_{k+1})
         if delta_max_h_k < delta_max_h_star:  # if ∆_max_h_k < ∆_max_h*
             delta_max_h_star = delta_max_h_k  # ∆_max_h* ← ∆_max_h_k
             t_star = t_k  # t* ← t_k
 
         for i in range(1, 3):  # for i ← 1 to 2 do // DDA
-            step_size = 2 ** (-k - 1) * delta_R
+            step_size = 2 ** (-k - 1)
             ray_position = ray_position - step_size * ray_direction  # R(t_{k,i}) ← R(t_{k,i−1}) − 2^(−k−1)∆R
-            if not (0 <= ray_position[0] < 1 and 0 <= ray_position[1] < 1):
-                break
             t_k = t_k - 2 ** (-k - 1)  # t_k ← t_k − 2^(−k−1)
             delta_max_h_k = ray_position[2] - sample_maxmipmap(ray_position, maxmipmap, m)  # ∆_max_h_k ← H − max_h(t_{k+1})
             if delta_max_h_k < delta_max_h_star:  # if ∆_max_h_k < ∆_max_h*
@@ -157,31 +163,6 @@ def fast_soft_shadow_algorithm(
             t_k = t_star + 2 ** (-k)  # t_k ← t* + 2^(−k)
 
     if delta_max_h_star < 1:  # if ∆_max_h* < 1
-        J_star = delta_max_h_star / t_star if t_star != 0 else J_star_0  # J* ← (∆_max_h*)/t*
+        J_star = delta_max_h_star / t_star  # J* ← (∆_max_h*)/t*
 
     return J_star
-
-
-def main():
-    N_prime = 5
-    delta_R = 1.0
-    n_cells = 16
-    n_nodes = n_cells + 1
-    height_field = np.zeros((n_nodes, n_nodes))
-    maxmipmap = create_maxmipmap(height_field)
-    J_star = np.zeros((n_cells, n_cells))
-    for i in range(n_cells):
-        for j in range(n_cells):
-            x = (i + 0.5) / n_cells
-            y = (j + 0.5) / n_cells
-            r = np.array([x, y, maxmipmap[i, j]])
-            dr = np.array([0.5, 0.5, np.sqrt(0.5)])
-            J_star[i, j] = fast_soft_shadow_algorithm(N_prime, delta_R, r, dr, maxmipmap)
-            print(i, j, r, dr, J_star[i, j])
-
-    plt.imshow(J_star)
-    plt.show()
-
-
-if __name__ == "__main__":
-    main()
