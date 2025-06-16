@@ -112,7 +112,7 @@ def find_dt(x, y, dx, dy, max_level):
     return min(tx, ty)
 
 
-def find_new_tangent(x, y, z, z0, dx, dy, t, dt, tangent, height_field):
+def find_new_tangent(x, y, z, z0, dx, dy, t, dt, tangent, tan1, height_field):
     for t_sample in np.linspace(0, dt, 10):
         x_sample = x + t_sample * dx
         y_sample = y + t_sample * dy
@@ -120,17 +120,20 @@ def find_new_tangent(x, y, z, z0, dx, dy, t, dt, tangent, height_field):
         z_projection = z + t_sample * tangent
         if z_sample > z_projection:
             tangent = (z_sample - z0) / (t + t_sample)
+            if tangent > tan1:
+                break
     return tangent
 
 
-def max_tangent(x, y, dx, dy, tangent, height_field, maxmipmap):
+def max_tangent(x, y, dx, dy, tan0, tan1, height_field, maxmipmap):
+    tangent = tan0
     n_levels = len(maxmipmap)
     w, h = height_field.shape
     z0 = get_height(height_field, x, y)
     z = z0
     t = 0
 
-    while 0 <= x < w - 1 and 0 <= y < h - 1:
+    while 0 <= x < w - 1 and 0 <= y < h - 1 and tangent <= tan1:
         max_level = get_max_level(maxmipmap, x, y, z, dx, dy)
         if max_level == n_levels:
             break
@@ -142,11 +145,11 @@ def max_tangent(x, y, dx, dy, tangent, height_field, maxmipmap):
             dt = find_dt(x, y, dx, dy, 0)
             if dt <= 0:
                 break
-            tangent = find_new_tangent(x, y, z, z0, dx, dy, t, dt, tangent, height_field)
+            tangent = find_new_tangent(x, y, z, z0, dx, dy, t, dt, tangent, tan1, height_field)
 
         t += dt
         x += dt * dx
         y += dt * dy
-        z += dt * tangent
+        z += dt * tan0
 
     return tangent
