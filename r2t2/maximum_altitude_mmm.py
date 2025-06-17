@@ -3,7 +3,7 @@ import taichi as ti
 
 
 @ti.kernel
-def fast_mipmap(inp: ti.types.ndarray(), out: ti.types.ndarray()):
+def one_step_mipmap(inp: ti.types.ndarray(), out: ti.types.ndarray()):
     """
     Creates a maxmipmap from an input array
     """
@@ -32,6 +32,46 @@ def fast_mipmap(inp: ti.types.ndarray(), out: ti.types.ndarray()):
                     out[i * 2 + source_offset, j * 2 + 1],
                     out[i * 2 + source_offset + 1, j * 2 + 1],
                 )
+        source_offset = target_offset
+        target_offset += m
+        step *= 2
+
+
+@ti.kernel
+def mipmap_first_level(inp: ti.types.ndarray(), out: ti.types.ndarray()):
+    n = out.shape[1]
+    ti.loop_config(block_dim=16)
+    for i, j in ti.ndrange(n, n):
+        out[i, j] = max(inp[i, j], inp[i + 1, j], inp[i, j + 1], inp[i + 1, j + 1])
+
+@ti.kernel
+def mipmap_level(inp: ti.types.ndarray(), out: ti.types.ndarray(), source_offset: int, target_offset: int, m: int):
+    ti.loop_config(block_dim=16)
+    for i, j in ti.ndrange(m, m):
+        out[i + target_offset, j] = max(
+            inp[i * 2 + source_offset, j * 2],
+            inp[i * 2 + source_offset + 1, j * 2],
+            inp[i * 2 + source_offset, j * 2 + 1],
+            inp[i * 2 + source_offset + 1, j * 2 + 1],
+        )
+
+
+def compute_mipmap(inp, out):
+    w, h = inp.shape
+    print(w, h)
+    n2, n = out.shape
+    print(n2, n)
+    assert w == h, "input width and height have to be the same"
+    assert (n + 1) * 2 == n2, "output array has to have width = double height"
+    assert n == h - 2, "output array height has to be same as input height minus one"
+
+    mipmap_first_level(inp, out)
+    step = 2
+    source_offset = 0
+    target_offset = n
+    while step <= n:
+        m = n // step
+        mipmap_level(out, out, source_offset, target_offset, m)
         source_offset = target_offset
         target_offset += m
         step *= 2

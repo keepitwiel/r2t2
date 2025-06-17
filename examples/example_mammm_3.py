@@ -3,7 +3,7 @@ import time
 import numpy as np
 import taichi as ti
 
-from r2t2.maximum_altitude_mmm import max_tangent, fast_mipmap
+from r2t2.maximum_altitude_mmm import max_tangent, one_step_mipmap, compute_mipmap
 
 
 @ti.kernel
@@ -30,7 +30,11 @@ def render(output_field: ti.types.ndarray(), height_field: ti.types.ndarray(),
 def update(illumination_field, mx, my, height_field, maxmipmap, n_cells, theta, azi, alt, radius, n_levels):
     height_field[:, :] = n_cells / 4 * (np.sin(mx * 8 * np.pi + theta) + np.cos(my * 8 * np.pi + theta)).astype(
         np.float32)
-    fast_mipmap(height_field, maxmipmap)
+    t0 = time.time()
+    one_step_mipmap(height_field, maxmipmap)
+    # compute_mipmap(height_field, maxmipmap)
+    t1 = time.time()
+    print(f"fast_maxmipmap: {t1 - t0:.5f}")
     render(illumination_field, height_field, maxmipmap, azi, alt, radius, n_levels)
     theta += np.pi / 180
     theta = theta % (2.0 * np.pi)
@@ -66,5 +70,5 @@ def main(n_cells: int):
 
 
 if __name__ == "__main__":
-    ti.init(ti.vulkan)
+    ti.init(ti.cpu)
     main(n_cells=1024)
