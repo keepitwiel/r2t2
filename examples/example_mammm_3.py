@@ -1,9 +1,7 @@
-import time
-
 import numpy as np
 import taichi as ti
 
-from r2t2.maximum_altitude_mmm import one_step_mipmap, render
+from r2t2.maximize_tangent.maximize_tangent import one_step_mipmap, render
 
 
 def update(illumination_field, mx, my, height_field, maxmipmap, n_cells, theta, azi, alt, radius, n_levels):
