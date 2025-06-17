@@ -3,38 +3,13 @@ import time
 import numpy as np
 import taichi as ti
 
-from r2t2.maximum_altitude_mmm import max_tangent, one_step_mipmap, compute_mipmap
-
-
-@ti.kernel
-def render(output_field: ti.types.ndarray(), height_field: ti.types.ndarray(),
-           maxmipmap: ti.types.ndarray(), azi: float, alt: float, radius: float, n_levels: int):
-    dx, dy = ti.cos(azi), ti.sin(azi)
-    tan0 = ti.tan(alt)
-    tan1 = ti.tan(alt + radius)
-    for i, j in output_field:
-            x = i + 0.5
-            y = j + 0.5
-            tangent = max_tangent(x, y, dx, dy, tan0, tan1, height_field, maxmipmap, n_levels)
-            if radius > 0:
-                tangent = min(tangent, tan1)  # have to clip
-                output_field[i, j] = (ti.atan2(tan1, 1) - ti.atan2(tangent, 1)) / radius
-            else:
-                # radius == 0, therefore tan1 == tan0 == tangent (no collision) or tan1 < tangent (collision)
-                if tan1 == tangent:
-                    output_field[i, j] = 1.0
-                else:
-                    output_field[i, j] = 0.0
+from r2t2.maximum_altitude_mmm import one_step_mipmap, render
 
 
 def update(illumination_field, mx, my, height_field, maxmipmap, n_cells, theta, azi, alt, radius, n_levels):
     height_field[:, :] = n_cells / 4 * (np.sin(mx * 8 * np.pi + theta) + np.cos(my * 8 * np.pi + theta)).astype(
         np.float32)
-    t0 = time.time()
     one_step_mipmap(height_field, maxmipmap)
-    # compute_mipmap(height_field, maxmipmap)
-    t1 = time.time()
-    print(f"fast_maxmipmap: {t1 - t0:.5f}")
     render(illumination_field, height_field, maxmipmap, azi, alt, radius, n_levels)
     theta += np.pi / 180
     theta = theta % (2.0 * np.pi)

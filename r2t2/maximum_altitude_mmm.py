@@ -30,13 +30,12 @@ def render(
     returns:
         None
     """
-    dx, dy = ti.cos(azi), ti.sin(azi)
+    dr = ti.math.vec2(ti.cos(azi), ti.sin(azi))
     tan0 = ti.tan(alt)
     tan1 = ti.tan(alt + diameter)
     for i, j in output_field:
-        x = i + 0.5
-        y = j + 0.5
-        tangent = max_tangent(x, y, dx, dy, tan0, tan1, height_field, maxmipmap, n_levels)
+        r = ti.math.vec2(i + 0.5, j + 0.5)
+        tangent = max_tangent(r, dr, tan0, tan1, height_field, maxmipmap, n_levels)
         if diameter > 0:
             tangent = min(tangent, tan1)  # have to clip
             output_field[i, j] = (ti.atan2(tan1, 1) - ti.atan2(tangent, 1)) / diameter
@@ -137,8 +136,7 @@ def compute_mipmap(inp: np.ndarray, out: np.ndarray):
 @ti.func
 def get_height(
     height_field: ti.types.ndarray(),
-    x: float,
-    y: float
+    r: ti.math.vec2,
 ):
     """
     Calculate f(x, y), where f is a bilinear interpolation of the gridpoints
@@ -146,9 +144,9 @@ def get_height(
     """
     w, h = height_field.shape
     result = -np.inf
-    if 0 <= x < w - 1 and 0 <= y < h - 1:
-        i, j = int(x), int(y)
-        u, v = x % 1, y % 1
+    if 0 <= r.x < w - 1 and 0 <= r.y < h - 1:
+        i, j = int(r.x), int(r.y)
+        u, v = r.x % 1, r.y % 1
         z00 = height_field[i, j]
         z10 = height_field[i + 1, j]
         z01 = height_field[i, j + 1]
@@ -161,11 +159,9 @@ def get_height(
 @ti.func
 def get_max_level(
     maxmipmap: ti.types.ndarray(),
-    x: float,
-    y: float,
+    r: ti.math.vec2,
     z: float,
-    dx: float,
-    dy: float,
+    dr: ti.math.vec2,
     n_levels: int,
 ):
     """
@@ -178,12 +174,12 @@ def get_max_level(
     for l in range(n_levels):
         l_ = l
         d = 2**(n_levels - l)
-        i, j = int(x // step_size), int(y // step_size)
-        if i == x // step_size:
-            if dx < 0:
+        i, j = int(r.x // step_size), int(r.y // step_size)
+        if i == r.x // step_size:
+            if dr.x < 0:
                 i -= 1
-        if j == y // step_size:
-            if dy < 0:
+        if j == r.y // step_size:
+            if dr.y < 0:
                 j -= 1
         if 0 <= i < d and 0 <= j < d:
             z_max = maxmipmap[offset + i, j]
@@ -238,25 +234,23 @@ def partial_dt(x: float, dx: float, cell_size: int):
 
 
 @ti.func
-def find_dt(x: float, y: float, dx: float, dy: float, max_level: int):
+def find_dt(r: ti.math.vec2, dr: ti.math.vec2, max_level: int):
     """
     Find dt such that point (x + dt * dx, y + dt * dy) is at the closest
     grid edge, defined by max_level.
     """
-    assert dx != 0 or dy != 0
+    assert dr.x != 0 or dr.y != 0
     step_size = 2**max_level
-    tx = partial_dt(x, dx, step_size)
-    ty = partial_dt(y, dy, step_size)
+    tx = partial_dt(r.x, dr.x, step_size)
+    ty = partial_dt(r.y, dr.y, step_size)
     return min(tx, ty)
 
 
 @ti.func
 def find_new_tangent(
-    x0: float,
-    y0: float,
+    r0: ti.math.vec2,
     z0: float,
-    dx: float,
-    dy: float,
+    dr: ti.math.vec2,
     t: float,
     dt: float,
     tangent: float,
@@ -270,9 +264,8 @@ def find_new_tangent(
     """
     for i in range(1, 11):
         ts = t + dt * i / 10.0
-        x_sample = x0 + ts * dx
-        y_sample = y0 + ts * dy
-        z_sample = get_height(height_field, x_sample, y_sample)
+        r_sample = r0 + ts * dr
+        z_sample = get_height(height_field, r_sample)
         z_projection = z0 + ts * tangent
         if z_sample > z_projection:
             tangent = (z_sample - z0) / ts
@@ -283,10 +276,8 @@ def find_new_tangent(
 
 @ti.func
 def max_tangent(
-    x: float,
-    y: float,
-    dx: float,
-    dy: float,
+    r: ti.math.vec2,
+    dr: ti.math.vec2,
     tan0: float,
     tan1: float,
     height_field: ti.types.ndarray(),
@@ -299,29 +290,28 @@ def max_tangent(
     """
     tangent = tan0
     w, h = height_field.shape
-    x0, y0 = x, y
-    z0 = get_height(height_field, x, y)
+    r0 = r
+    z0 = get_height(height_field, r)
     z = z0
     t = 0.0
     dt = 0.0
 
-    while 0 <= x < w - 1 and 0 <= y < h - 1 and tangent <= tan1:
-        max_level = get_max_level(maxmipmap, x, y, z, dx, dy, n_levels)
+    while 0 <= r.x < w - 1 and 0 <= r.y < h - 1 and tangent <= tan1:
+        max_level = get_max_level(maxmipmap, r, z, dr, n_levels)
         if max_level == n_levels:
             break
         elif 0 <= max_level < n_levels:
-            dt = find_dt(x, y, dx, dy, max_level)
+            dt = find_dt(r, dr, max_level)
             if dt <= 0:
                 break
         else:
-            dt = find_dt(x, y, dx, dy, 0)
+            dt = find_dt(r, dr, 0)
             if dt <= 0:
                 break
-            tangent = find_new_tangent(x0, y0, z0, dx, dy, t, dt, tangent, tan1, height_field)
+            tangent = find_new_tangent(r0, z0, dr, t, dt, tangent, tan1, height_field)
 
         t += dt
-        x += dt * dx
-        y += dt * dy
+        r += dt * dr
         z += dt * tan0
 
     return tangent
