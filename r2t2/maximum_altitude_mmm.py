@@ -174,13 +174,12 @@ def get_max_level(
     for l in range(n_levels):
         l_ = l
         d = 2**(n_levels - l)
-        i, j = int(r.x // step_size), int(r.y // step_size)
-        if i == r.x // step_size:
-            if dr.x < 0:
-                i -= 1
-        if j == r.y // step_size:
-            if dr.y < 0:
-                j -= 1
+        u, v = r.x // step_size, r.y // step_size
+        i, j = int(u), int(v)
+        if i == u and  dr.x < 0:
+            i -= 1
+        if j == v and dr.y < 0:
+            j -= 1
         if 0 <= i < d and 0 <= j < d:
             z_max = maxmipmap[offset + i, j]
             if z < z_max:
@@ -197,39 +196,29 @@ def get_max_level(
 @ti.func
 def partial_dt(x: float, dx: float, cell_size: int):
     """
-    Get smallest coefficient t > 0 such that
-    x + t * dx is a multiple of cell_size.
+    Compute the smallest t > 0 such that x + t * dx is a multiple of cell_size.
 
-    example 1: x = 1, dx = -0.5, cell_size = 1:
-        i = 1 - 1 = 0
-        t = (0 * cell_size - x) / dx = -1 / -0.5 = 2
+    Args:
+        x: Starting position (float).
+        dx: Step direction and magnitude (float).
+        cell_size: Grid cell size (int).
 
-    example 2: x = 2.0, dx = -0.5, cell_size = 2:
-        i = 1 - 1 = 0
-        t = (0 * cell_size - x) / dx = -2 / -0.5 = 4
+    Returns:
+        Smallest t > 0, or ti.f32(np.inf) if dx is zero.
 
-    example 3: x = 7.5, dx = 0.5, cell_size = 1:
-        i = 7
-        t = (8 * cell_size - x) / dx = 0.5 / 0.5 = 1
-
-    example 4: x = 7.78, dx = 0.5, cell_size = 1:
-        i = 7
-        t = (8 * cell_size - x) / dx = 0.22 / 0.5 = 0.44
-
+    Examples:
+        partial_dt(1.0, -0.5, 1) -> 2.0
+        partial_dt(2.0, -0.5, 2) -> 4.0
+        partial_dt(7.5, 0.5, 1) -> 1.0
+        partial_dt(7.78, 0.5, 1) -> 0.44
     """
-    t = 0.0
-
-    i = int(x // cell_size)
-    if i == x // cell_size:
+    t = np.inf
+    if dx != 0:
+        i = ti.floor(x / cell_size, int)
         if dx < 0:
             i -= 1
-    if dx > 0:
-        t = ((i + 1) * cell_size - x) / dx
-    elif dx < 0:
-        t = (i * cell_size - x) / dx
-    else:
-        t = np.inf
-
+        next_boundary = (i + 1) * cell_size
+        t = (next_boundary - x) / dx
     return t
 
 
