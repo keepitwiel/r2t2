@@ -289,14 +289,9 @@ def max_tangent(
         max_level = get_max_level(maxmipmap, r, z, dr, n_levels)
         if max_level == n_levels:
             break
-        elif 0 <= max_level < n_levels:
-            dt = find_dt(r, dr, max_level)
-            if dt <= 0:
-                break
         else:
-            dt = find_dt(r, dr, 0)
-            if dt <= 0:
-                break
+            dt = find_dt(r, dr, max(0, max_level))
+        if max_level < 0:
             tangent = find_new_tangent(r0, z0, dr, t, dt, tangent, tan1, height_field)
 
         t += dt
