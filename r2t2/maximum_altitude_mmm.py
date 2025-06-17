@@ -165,16 +165,16 @@ def find_dt(x: float, y: float, dx: float, dy: float, max_level: int):
 
 
 @ti.func
-def find_new_tangent(x: float, y: float, z: float, z0: float, dx: float, dy: float,
+def find_new_tangent(x0: float, y0: float, z0: float, dx: float, dy: float,
                      t: float, dt: float, tangent: float, tan1: float, height_field: ti.types.ndarray()):
-    for i in range(10):
-        t_sample = dt * i / 10.0
-        x_sample = x + t_sample * dx
-        y_sample = y + t_sample * dy
+    for i in range(1, 11):
+        ts = t + dt * i / 10.0
+        x_sample = x0 + ts * dx
+        y_sample = y0 + ts * dy
         z_sample = get_height(height_field, x_sample, y_sample)
-        z_projection = z + t_sample * tangent
+        z_projection = z0 + ts * tangent
         if z_sample > z_projection:
-            tangent = (z_sample - z0) / (t + t_sample)
+            tangent = (z_sample - z0) / ts
             if tangent > tan1:
                 break
     return tangent
@@ -185,6 +185,7 @@ def max_tangent(x: float, y: float, dx: float, dy: float, tan0: float, tan1: flo
                 height_field: ti.types.ndarray(), maxmipmap: ti.types.ndarray(), n_levels: int):
     tangent = tan0
     w, h = height_field.shape
+    x0, y0 = x, y
     z0 = get_height(height_field, x, y)
     z = z0
     t = 0.0
@@ -202,7 +203,7 @@ def max_tangent(x: float, y: float, dx: float, dy: float, tan0: float, tan1: flo
             dt = find_dt(x, y, dx, dy, 0)
             if dt <= 0:
                 break
-            tangent = find_new_tangent(x, y, z, z0, dx, dy, t, dt, tangent, tan1, height_field)
+            tangent = find_new_tangent(x0, y0, z0, dx, dy, t, dt, tangent, tan1, height_field)
 
         t += dt
         x += dt * dx

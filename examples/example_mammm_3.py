@@ -67,4 +67,4 @@ def main(n_cells: int):
 
 if __name__ == "__main__":
     ti.init(ti.vulkan)
-    main(n_cells=2048)
+    main(n_cells=1024)
