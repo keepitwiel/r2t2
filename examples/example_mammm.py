@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from r2t2.maximum_altitude_mmm_np import max_tangent, get_mipmap
+from r2t2.maximize_tangent.maximize_tangent_np import max_tangent, get_mipmap
 
 
 def render(output_field, height_field):

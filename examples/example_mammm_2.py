@@ -1,7 +1,7 @@
 import numpy as np
 import taichi as ti
 
-from r2t2.maximum_altitude_mmm_np import max_tangent, get_mipmap
+from r2t2.maximize_tangent.maximize_tangent_np import max_tangent, get_mipmap
 
 
 
