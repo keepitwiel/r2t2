@@ -3,6 +3,59 @@ import taichi as ti
 
 
 @ti.kernel
+def render(
+    output_field: ti.types.ndarray(),
+    height_field: ti.types.ndarray(),
+    maxmipmap: ti.types.ndarray(),
+    azi: float,
+    alt: float,
+    diameter: float,
+    n_levels: int,
+):
+    """
+    Render an illumination field based on various inputs.
+
+    params:
+        output_field: illumination field indicating how much
+            light falls on a cell bounded by four grid nodes.
+            0.0 = shadow, 1.0 = fully lit
+        height_field: height values of grid nodes on a square, regular grid.
+            size of height_field = size of output_field + 1
+        maxmipmap: a maximum mipmap of the height_field
+        azi: azimuth of light source
+        alt: lower bound altitude of light source
+        diameter: diameter of light source
+        n_levels: number of levels in maxmipmap
+
+    returns:
+        None
+    """
+    dx, dy = ti.cos(azi), ti.sin(azi)
+    tan0 = ti.tan(alt)
+    tan1 = ti.tan(alt + diameter)
+    for i, j in output_field:
+        x = i + 0.5
+        y = j + 0.5
+        tangent = max_tangent(x, y, dx, dy, tan0, tan1, height_field, maxmipmap, n_levels)
+        if diameter > 0:
+            tangent = min(tangent, tan1)  # have to clip
+            output_field[i, j] = (ti.atan2(tan1, 1) - ti.atan2(tangent, 1)) / diameter
+        else:
+            """
+            in the case of a point light source (diameter = 0),
+            the lower bound and upper bound altitudes are the same (tan0 == tan1).
+            Consequently, a point on the height field is in shadow if
+            tan1 < tangent (light source tangent is above the maximum tangent;
+            if tan1 == tangent, no collision with height field has taken place
+            and therefore the point is fully lit
+            """
+            if tan1 == tangent:
+                output_field[i, j] = 1.0
+            else:
+                output_field[i, j] = 0.0
+
+
+@ti.kernel
 def one_step_mipmap(inp: ti.types.ndarray(), out: ti.types.ndarray()):
     """
     Creates a maxmipmap from an input array
@@ -56,7 +109,11 @@ def mipmap_level(inp: ti.types.ndarray(), out: ti.types.ndarray(), source_offset
         )
 
 
-def compute_mipmap(inp, out):
+def compute_mipmap(inp: np.ndarray, out: np.ndarray):
+    """
+    Compute mipmap by outsourcing the two steps to different kernels.
+    Should be faster for GPUs.
+    """
     w, h = inp.shape
     print(w, h)
     n2, n = out.shape
@@ -77,45 +134,16 @@ def compute_mipmap(inp, out):
         step *= 2
 
 
-#
-# def reduce(array: np.ndarray, step_size: int, is_max: bool) -> np.ndarray:
-#     if is_max:
-#         func = np.max
-#     else:
-#         func = np.min
-#     result = func(
-#         np.stack(
-#             [
-#                 array[:-1:step_size, :-1:step_size],
-#                 array[1::step_size, :-1:step_size],
-#                 array[:-1:step_size, 1::step_size],
-#                 array[1::step_size, 1::step_size],
-#             ],
-#             axis=2,
-#         ),
-#         axis=2,
-#     )
-#     return result
-#
-#
-# def get_mipmap(z: np.ndarray, is_max: bool) -> list[np.ndarray]:
-#     w, h = z.shape
-#     assert w == h
-#     n_levels = int(np.log2(w - 1))
-#     buffer = reduce(z, step_size=1, is_max=is_max)
-#     result = [buffer]
-#     for level in range(n_levels):
-#         buffer = reduce(buffer, step_size=2, is_max=is_max)
-#         result.append(buffer)
-#     return result
-#
-#
-# @ti.func
-# def get_max_height(maxmipmap: ti.types.ndarray(), x: float, y: float):
-
-
 @ti.func
-def get_height(height_field: ti.types.ndarray(), x: float, y: float):
+def get_height(
+    height_field: ti.types.ndarray(),
+    x: float,
+    y: float
+):
+    """
+    Calculate f(x, y), where f is a bilinear interpolation of the gridpoints
+    in height_field nearest to coordinate (x, y).
+    """
     w, h = height_field.shape
     result = -np.inf
     if 0 <= x < w - 1 and 0 <= y < h - 1:
@@ -131,9 +159,20 @@ def get_height(height_field: ti.types.ndarray(), x: float, y: float):
 
 
 @ti.func
-def get_max_level(maxmipmap: ti.types.ndarray(), x: float, y: float, z: float, dx: float, dy: float, n_levels: int):
+def get_max_level(
+    maxmipmap: ti.types.ndarray(),
+    x: float,
+    y: float,
+    z: float,
+    dx: float,
+    dy: float,
+    n_levels: int,
+):
+    """
+    Get height level at which ray height z is above the associated
+    value in the maxmipmap.
+    """
     step_size = 1
-    # level = 0
     l_ = 0
     offset = 0
     for l in range(n_levels):
@@ -162,6 +201,9 @@ def get_max_level(maxmipmap: ti.types.ndarray(), x: float, y: float, z: float, d
 @ti.func
 def partial_dt(x: float, dx: float, cell_size: int):
     """
+    Get smallest coefficient t > 0 such that
+    x + t * dx is a multiple of cell_size.
+
     example 1: x = 1, dx = -0.5, cell_size = 1:
         i = 1 - 1 = 0
         t = (0 * cell_size - x) / dx = -1 / -0.5 = 2
@@ -197,6 +239,10 @@ def partial_dt(x: float, dx: float, cell_size: int):
 
 @ti.func
 def find_dt(x: float, y: float, dx: float, dy: float, max_level: int):
+    """
+    Find dt such that point (x + dt * dx, y + dt * dy) is at the closest
+    grid edge, defined by max_level.
+    """
     assert dx != 0 or dy != 0
     step_size = 2**max_level
     tx = partial_dt(x, dx, step_size)
@@ -205,8 +251,23 @@ def find_dt(x: float, y: float, dx: float, dy: float, max_level: int):
 
 
 @ti.func
-def find_new_tangent(x0: float, y0: float, z0: float, dx: float, dy: float,
-                     t: float, dt: float, tangent: float, tan1: float, height_field: ti.types.ndarray()):
+def find_new_tangent(
+    x0: float,
+    y0: float,
+    z0: float,
+    dx: float,
+    dy: float,
+    t: float,
+    dt: float,
+    tangent: float,
+    tan1: float,
+    height_field: ti.types.ndarray(),
+):
+    """
+    Given a ray starting position (x0, y0, z0), ray length t, and tangent,
+    determine if the ray intersects with the height field (by uniform stepping).
+    If an intersection takes place, raise the tangent accordingly.
+    """
     for i in range(1, 11):
         ts = t + dt * i / 10.0
         x_sample = x0 + ts * dx
@@ -221,8 +282,21 @@ def find_new_tangent(x0: float, y0: float, z0: float, dx: float, dy: float,
 
 
 @ti.func
-def max_tangent(x: float, y: float, dx: float, dy: float, tan0: float, tan1: float,
-                height_field: ti.types.ndarray(), maxmipmap: ti.types.ndarray(), n_levels: int):
+def max_tangent(
+    x: float,
+    y: float,
+    dx: float,
+    dy: float,
+    tan0: float,
+    tan1: float,
+    height_field: ti.types.ndarray(),
+    maxmipmap: ti.types.ndarray(),
+    n_levels: int,
+):
+    """
+    For a given ray at (x, y) and direction (dx, dy), find the lowest vertical tangent
+    such that the ray doesn't intersect with the height field.
+    """
     tangent = tan0
     w, h = height_field.shape
     x0, y0 = x, y
